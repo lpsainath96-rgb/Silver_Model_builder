@@ -1,0 +1,158 @@
+{
+  "BRONZE_DNB_COMPANY": {
+    "columns": [
+      {
+        "name": "BRONZE_KEY",
+        "datatype": "NUMBER"
+      },
+      {
+        "name": "DUNS_NUMBER",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "BUSINESS_NAME",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "PRIMARY_ADDRESS",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "EMPLOYEE_TOTAL",
+        "datatype": "NUMBER"
+      },
+      {
+        "name": "SALES_REVENUE_USD",
+        "datatype": "NUMBER"
+      },
+      {
+        "name": "SIC_CODE",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "NAICS_CODE",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "YEAR_STARTED",
+        "datatype": "NUMBER"
+      },
+      {
+        "name": "PARENT_DUNS",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "GLOBAL_ULTIMATE_DUNS",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "FAMILY_TREE_SIZE",
+        "datatype": "NUMBER"
+      },
+      {
+        "name": "PAYDEX_SCORE",
+        "datatype": "NUMBER"
+      },
+      {
+        "name": "CREDIT_RATING",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "FINANCIAL_STRESS",
+        "datatype": "NUMBER"
+      },
+      {
+        "name": "OUT_OF_BUSINESS",
+        "datatype": "BOOLEAN"
+      },
+      {
+        "name": "RAW_JSON",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "LOAD_TIMESTAMP",
+        "datatype": "TIMESTAMP_NTZ"
+      },
+      {
+        "name": "MD5_HASH",
+        "datatype": "TEXT"
+      }
+    ]
+  },
+  "BRONZE_ZOOMINFO_COMPANY": {
+    "columns": [
+      {
+        "name": "BRONZE_KEY",
+        "datatype": "NUMBER"
+      },
+      {
+        "name": "ZOOMINFO_ID",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "COMPANY_NAME",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "TICKER",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "WEBSITE",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "EMPLOYEE_COUNT",
+        "datatype": "NUMBER"
+      },
+      {
+        "name": "REVENUE",
+        "datatype": "NUMBER"
+      },
+      {
+        "name": "INDUSTRY",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "FOUNDED_YEAR",
+        "datatype": "NUMBER"
+      },
+      {
+        "name": "HQ_ADDRESS",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "HQ_CITY",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "HQ_STATE",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "HQ_COUNTRY",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "LINKEDIN_URL",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "TECHNOLOGIES",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "RAW_JSON",
+        "datatype": "TEXT"
+      },
+      {
+        "name": "LOAD_TIMESTAMP",
+        "datatype": "TIMESTAMP_NTZ"
+      },
+      {
+        "name": "MD5_HASH",
+        "datatype": "TEXT"
+      }
+    ]
+  }
+}

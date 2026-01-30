@@ -1,0 +1,9 @@
+pandas 
+sqlalchemy 
+psycopg2-binary    
+ydata-profiling 
+scikit-learn 
+python-dotenv 
+matplotlib 
+networkx
+snowflake-connector-python

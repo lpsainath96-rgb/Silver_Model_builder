@@ -1,0 +1,590 @@
+{
+  "BRONZE_DNB_COMPANY": {
+    "BRONZE_KEY": {
+      "datatype": "NUMBER",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 35,
+      "top_values": [
+        "2069",
+        "2054",
+        "2064"
+      ],
+      "sample_values": [
+        "2046",
+        "2002"
+      ],
+      "range": {
+        "min": 2001.0,
+        "max": 2070.0
+      }
+    },
+    "DUNS_NUMBER": {
+      "datatype": "TEXT",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 35,
+      "top_values": [
+        "001234616",
+        "001234615",
+        "001234618"
+      ],
+      "sample_values": [
+        "001234615",
+        "001234567"
+      ]
+    },
+    "BUSINESS_NAME": {
+      "datatype": "TEXT",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 35,
+      "top_values": [
+        "Chevron Corporation",
+        "Procter & Gamble",
+        "Target International"
+      ],
+      "sample_values": [
+        "Kroger Co",
+        "AstraZeneca"
+      ]
+    },
+    "PRIMARY_ADDRESS": {
+      "datatype": "TEXT",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 32,
+      "top_values": [
+        "London, UK",
+        "Cincinnati, OH",
+        "1600 Amphitheatre Pkwy, CA"
+      ],
+      "sample_values": [
+        "345 Park Avenue, NY 10154",
+        "200 West Street, New York, NY"
+      ]
+    },
+    "EMPLOYEE_TOTAL": {
+      "datatype": "NUMBER",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 33,
+      "top_values": [
+        "83000",
+        "300000",
+        "100000"
+      ],
+      "sample_values": [
+        "490000",
+        "72000"
+      ],
+      "range": {
+        "min": 4500.0,
+        "max": 1600000.0
+      }
+    },
+    "SALES_REVENUE_USD": {
+      "datatype": "NUMBER",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 32,
+      "top_values": [
+        "156000000000.00",
+        "52000000000.00",
+        "307000000000.00"
+      ],
+      "sample_values": [
+        "59400000000.00",
+        "44500000000.00"
+      ],
+      "range": {
+        "min": 9700000000.0,
+        "max": 575000000000.0
+      }
+    },
+    "SIC_CODE": {
+      "datatype": "TEXT",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 17,
+      "top_values": [
+        "2834",
+        "3711",
+        "2911"
+      ],
+      "sample_values": [
+        "6282",
+        "6211"
+      ]
+    },
+    "NAICS_CODE": {
+      "datatype": "TEXT",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 17,
+      "top_values": [
+        "325412",
+        "336111",
+        "324110"
+      ],
+      "sample_values": [
+        "523910",
+        "551111"
+      ]
+    },
+    "YEAR_STARTED": {
+      "datatype": "NUMBER",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 34,
+      "top_values": [
+        "1937",
+        "2000",
+        "1837"
+      ],
+      "sample_values": [
+        "1985",
+        "1869"
+      ],
+      "range": {
+        "min": 1837.0,
+        "max": 2010.0
+      }
+    },
+    "PARENT_DUNS": {
+      "datatype": "TEXT",
+      "total": 35,
+      "nulls": 35,
+      "distinct": 0,
+      "top_values": [],
+      "sample_values": []
+    },
+    "GLOBAL_ULTIMATE_DUNS": {
+      "datatype": "TEXT",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 35,
+      "top_values": [
+        "001234616",
+        "001234615",
+        "001234618"
+      ],
+      "sample_values": [
+        "001234615",
+        "001234567"
+      ]
+    },
+    "FAMILY_TREE_SIZE": {
+      "datatype": "NUMBER",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 21,
+      "top_values": [
+        "200",
+        "300",
+        "400"
+      ],
+      "sample_values": [
+        "127",
+        "256"
+      ],
+      "range": {
+        "min": 90.0,
+        "max": 800.0
+      }
+    },
+    "PAYDEX_SCORE": {
+      "datatype": "NUMBER",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 10,
+      "top_values": [
+        "90",
+        "87",
+        "88"
+      ],
+      "sample_values": [
+        "82",
+        "80"
+      ],
+      "range": {
+        "min": 80.0,
+        "max": 92.0
+      }
+    },
+    "CREDIT_RATING": {
+      "datatype": "TEXT",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 6,
+      "top_values": [
+        "4A1",
+        "3A1",
+        "5A1"
+      ],
+      "sample_values": [
+        "4A1",
+        "5A1"
+      ]
+    },
+    "FINANCIAL_STRESS": {
+      "datatype": "NUMBER",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 1,
+      "top_values": [
+        "1"
+      ],
+      "sample_values": [
+        "1"
+      ],
+      "range": {
+        "min": 1.0,
+        "max": 1.0
+      }
+    },
+    "OUT_OF_BUSINESS": {
+      "datatype": "BOOLEAN",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 1,
+      "top_values": [
+        "False"
+      ],
+      "sample_values": [
+        "False"
+      ]
+    },
+    "RAW_JSON": {
+      "datatype": "TEXT",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 35,
+      "top_values": [
+        "{\"duns\":\"001234568\",\"name\":\"Goldman Sachs Group\"}",
+        "{\"duns\":\"001234609\",\"name\":\"Volkswagen Group\"}",
+        "{\"duns\":\"001234611\",\"name\":\"General Motors\"}"
+      ],
+      "sample_values": [
+        "{\"duns\":\"001234568\",\"name\":\"Goldman Sachs Group\"}",
+        "{\"duns\":\"001234567\",\"name\":\"The Blackstone Group L.P.\"}"
+      ]
+    },
+    "LOAD_TIMESTAMP": {
+      "datatype": "TIMESTAMP_NTZ",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 2,
+      "top_values": [
+        "2026-01-13 01:00:54.934000",
+        "2026-01-13 00:57:11.242000"
+      ],
+      "sample_values": [
+        "2026-01-13 00:57:11.242000",
+        "2026-01-13 01:00:54.934000"
+      ]
+    },
+    "MD5_HASH": {
+      "datatype": "TEXT",
+      "total": 35,
+      "nulls": 0,
+      "distinct": 27,
+      "top_values": [
+        "00112233445566778899aabbccddeeff",
+        "778899aabbccddeeff00112233445566",
+        "5566778899aabbccddeeff0011223344"
+      ],
+      "sample_values": [
+        "b222222433f02071597741e6ff5a8ea0",
+        "7c211433f02071597741e6ff5a8ea34f"
+      ]
+    }
+  },
+  "BRONZE_ZOOMINFO_COMPANY": {
+    "BRONZE_KEY": {
+      "datatype": "NUMBER",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 41,
+      "top_values": [
+        "1050",
+        "1061",
+        "1062"
+      ],
+      "sample_values": [
+        "1041",
+        "1001"
+      ],
+      "range": {
+        "min": 1001.0,
+        "max": 1080.0
+      }
+    },
+    "ZOOMINFO_ID": {
+      "datatype": "TEXT",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 41,
+      "top_values": [
+        "ZI000001",
+        "ZI000060",
+        "ZI000062"
+      ],
+      "sample_values": [
+        "ZI000001",
+        "ZI000041"
+      ]
+    },
+    "COMPANY_NAME": {
+      "datatype": "TEXT",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 41,
+      "top_values": [
+        "Honeywell",
+        "Boeing",
+        "UPS"
+      ],
+      "sample_values": [
+        "General Electric",
+        "Blackstone Group Inc"
+      ]
+    },
+    "TICKER": {
+      "datatype": "TEXT",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 41,
+      "top_values": [
+        "HON",
+        "UPS",
+        "TEAM"
+      ],
+      "sample_values": [
+        "BX",
+        "EBAY"
+      ]
+    },
+    "WEBSITE": {
+      "datatype": "TEXT",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 41,
+      "top_values": [
+        "www.ge.com",
+        "www.hpe.com",
+        "www.lucidmotors.com"
+      ],
+      "sample_values": [
+        "www.ge.com",
+        "www.blackstone.com"
+      ]
+    },
+    "EMPLOYEE_COUNT": {
+      "datatype": "NUMBER",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 40,
+      "top_values": [
+        "3500",
+        "58000",
+        "10000"
+      ],
+      "sample_values": [
+        "74000",
+        "168000"
+      ],
+      "range": {
+        "min": 2200.0,
+        "max": 540000.0
+      }
+    },
+    "REVENUE": {
+      "datatype": "NUMBER",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 41,
+      "top_values": [
+        "76000000000.00",
+        "67000000000.00",
+        "5700000000.00"
+      ],
+      "sample_values": [
+        "76000000000.00",
+        "9700000000.00"
+      ],
+      "range": {
+        "min": 900000000.0,
+        "max": 102000000000.0
+      }
+    },
+    "INDUSTRY": {
+      "datatype": "TEXT",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 22,
+      "top_values": [
+        "Real Estate",
+        "Technology",
+        "Aerospace"
+      ],
+      "sample_values": [
+        "Conglomerate",
+        "Financial Services"
+      ]
+    },
+    "FOUNDED_YEAR": {
+      "datatype": "NUMBER",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 32,
+      "top_values": [
+        "2006",
+        "2009",
+        "2002"
+      ],
+      "sample_values": [
+        "1892",
+        "1906"
+      ],
+      "range": {
+        "min": 1783.0,
+        "max": 2015.0
+      }
+    },
+    "HQ_ADDRESS": {
+      "datatype": "TEXT",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 41,
+      "top_values": [
+        "1099 Stewart St",
+        "1221 S MoPac Expy",
+        "345 Park Avenue"
+      ],
+      "sample_values": [
+        "345 Park Avenue",
+        "5 Necco St"
+      ]
+    },
+    "HQ_CITY": {
+      "datatype": "TEXT",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 28,
+      "top_values": [
+        "San Francisco",
+        "San Jose",
+        "New York"
+      ],
+      "sample_values": [
+        "New York",
+        "Boston"
+      ]
+    },
+    "HQ_STATE": {
+      "datatype": "TEXT",
+      "total": 41,
+      "nulls": 6,
+      "distinct": 14,
+      "top_values": [
+        "CA",
+        "NY",
+        "WA"
+      ],
+      "sample_values": [
+        "NY",
+        "MA"
+      ]
+    },
+    "HQ_COUNTRY": {
+      "datatype": "TEXT",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 7,
+      "top_values": [
+        "United States",
+        "Netherlands",
+        "France"
+      ],
+      "sample_values": [
+        "Germany",
+        "United States"
+      ]
+    },
+    "LINKEDIN_URL": {
+      "datatype": "TEXT",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 41,
+      "top_values": [
+        "linkedin.com/company/philips",
+        "linkedin.com/company/honeywell",
+        "linkedin.com/company/hpe"
+      ],
+      "sample_values": [
+        "linkedin.com/company/ups",
+        "linkedin.com/company/ge"
+      ]
+    },
+    "TECHNOLOGIES": {
+      "datatype": "TEXT",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 40,
+      "top_values": [
+        "RealEstateTech",
+        "Ecommerce, Cloud",
+        "Payments, APIs"
+      ],
+      "sample_values": [
+        "Streaming, Cloud",
+        "SAP, AWS, IoT"
+      ]
+    },
+    "RAW_JSON": {
+      "datatype": "TEXT",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 41,
+      "top_values": [
+        "{\"id\":\"ZI000046\",\"name\":\"Boeing\"}",
+        "{\"id\":\"ZI000047\",\"name\":\"FedEx\"}",
+        "{\"id\":\"ZI000048\",\"name\":\"UPS\"}"
+      ],
+      "sample_values": [
+        "{\"id\":\"ZI000001\",\"name\":\"Blackstone Group Inc\"}",
+        "{\"id\":\"ZI000041\",\"name\":\"General Electric\"}"
+      ]
+    },
+    "LOAD_TIMESTAMP": {
+      "datatype": "TIMESTAMP_NTZ",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 2,
+      "top_values": [
+        "2026-01-13 00:50:31.703000",
+        "2026-01-13 00:48:50.750000"
+      ],
+      "sample_values": [
+        "2026-01-13 00:50:31.703000",
+        "2026-01-13 00:48:50.750000"
+      ]
+    },
+    "MD5_HASH": {
+      "datatype": "TEXT",
+      "total": 41,
+      "nulls": 0,
+      "distinct": 41,
+      "top_values": [
+        "28aa39bb50cc61dd72ee73ff84aa95aa",
+        "40aa51bb62cc73dd84ee85ff96aaiiee",
+        "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+      ],
+      "sample_values": [
+        "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+        "11aa22bb33cc44dd55ee66ff77aa88bb"
+      ]
+    }
+  }
+}
