@@ -142,11 +142,17 @@ def profile_column(conn, table_name: str, column_name: str, datatype: str) -> Di
     return profile
 
 
-def profile_table(conn, table_name: str) -> Dict[str, Dict[str, Any]]:
-    """Profile all columns in a table."""
+def profile_table(conn, table_name: str, target_columns: List[str] = None) -> Dict[str, Dict[str, Any]]:
+    """Profile all (or specific) columns in a table."""
     columns = get_column_info(conn, table_name)
     table_profile = {}
     
+    # Filter if target_columns is provided
+    if target_columns:
+        # Normalize to uppercase for case-insensitive matching
+        target_set = {c.upper() for c in target_columns}
+        columns = [c for c in columns if c["name"].upper() in target_set]
+
     for col in columns:
         col_name = col["name"]
         datatype = col["datatype"]

@@ -50,7 +50,7 @@ def normalize_type(dt: str):
 
 def build_column_line(col_name: str, attr: dict) -> str:
     dtype = normalize_type(attr.get("datatype","VARCHAR"))
-    return f'    "{col_name}" {dtype}'
+    return f'    {col_name} {dtype}'
 
 def parse_robust(text):
     # Try parsing directly
@@ -156,7 +156,7 @@ def main():
             if args.include_comments and attr.get("description"):
                 desc_safe = attr['description'].replace("'", "''")
                 comment_statements.append(
-                    f"COMMENT ON COLUMN {args.db}.{args.schema}.{table_name}.\"{col}\" IS '{desc_safe}';"
+                    f"COMMENT ON COLUMN {args.db}.{args.schema}.{table_name}.{col} IS '{desc_safe}';"
                 )
                 
         if not attrs:
@@ -164,15 +164,14 @@ def main():
             
         # PK Clause
         if pk_cols:
-             quoted_pks = [f'"{c}"' for c in pk_cols]
-             pk_clause = f",\n    PRIMARY KEY ({', '.join(quoted_pks)})"
+             pk_clause = f",\n    PRIMARY KEY ({', '.join(pk_cols)})"
         else:
              pk_clause = ""
              
         table_keyword = "TRANSIENT TABLE" if args.transient else "TABLE"
         full_table_name = f"{args.db}.{args.schema}.{table_name}"
         
-        ddl = f'CREATE OR REPLACE {table_keyword} {full_table_name} (\n' + ",\n".join(attrs) + pk_clause + "\n);"
+        ddl = f'CREATE {table_keyword} IF NOT EXISTS {full_table_name} (\n' + ",\n".join(attrs) + pk_clause + "\n);"
         ddl_statements.append(ddl)
         
     if args.include_comments and comment_statements:
