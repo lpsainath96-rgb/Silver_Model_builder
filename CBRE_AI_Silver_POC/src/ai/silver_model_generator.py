@@ -58,14 +58,17 @@ OVERALL TASK
    - Use "DIM_*" for Master/Reference data (e.g., DIM_COMPANY).
    - Use "FACT_*" for transactional/measured data.
 2. OPTIMIZE FOR PERFORMANCE:
-   - Instead of creating a separate column for every single minor source field, identify CORE business attributes as explicit columns.
-   - Group all secondary or "Nice-to-have" attributes into a single Snowflake VARIANT column named "SOURCE_DATA_JSON" or "EXTENDED_PROPERTIES". This makes the table much faster to scan for core analytics.
-3. For each entity, generate a complete Snowflake CREATE TABLE DDL.
+   - Identify CORE business attributes as explicit columns.
+   - EVERYTHING ELSE (secondary/granular fields) MUST be grouped into a single Snowflake VARIANT column named "EXTENDED_PROPERTIES". 
+3. STRICT RETENTION POLICY:
+   - Every single column provided in the input clusters MUST appear in the "source_columns" list of at least one target attribute. 
+   - DO NOT drop any columns. If a column doesn't fit a core attribute, map it to the "EXTENDED_PROPERTIES" variant.
+4. For each entity, generate a complete Snowflake CREATE TABLE DDL.
 
 DATATYPES
 - CORE Metrics: NUMBER(38,2).
 - Primary Keys: VARCHAR(16777216).
-- Secondary Data: VARIANT (to store JSON/Arrays of less frequent fields).
+- Secondary Data: VARIANT (Mandatory for all unmapped/secondary fields).
 - Dates: DATE.
 
 DDL STYLE REQUIREMENTS
@@ -86,13 +89,15 @@ Return ONLY valid JSON.
           "name": "COMPANY_NAME",
           "datatype": "VARCHAR(16777216)",
           "nullable": true,
-          "source_columns": ["SCHEMA.TABLE.COL"]
+          "source_columns": ["SCHEMA.TABLE.COL"],
+          "rationale": "Primary business name identified across source clusters with high semantic overlap."
         }},
         {{
           "name": "EXTENDED_PROPERTIES",
           "datatype": "VARIANT",
           "description": "JSON object containing secondary source attributes for performance",
-          "source_columns": ["LIST_OF_ALL_SECONDARY_COLS"]
+          "source_columns": ["SCHEMA.TABLE.COL_A", "SCHEMA.TABLE.COL_B", "..."],
+          "rationale": "Grouping all remaining source attributes to ensure 100% data retention."
         }}
       ]
     }}
@@ -100,7 +105,7 @@ Return ONLY valid JSON.
 }}
 """
 
-    prompt = f"Column clusters JSON (truncate where large):\n{json.dumps(clustered_data, indent=2)[:8000]}"  # guard overly long prompt
+    prompt = f"Column clusters JSON:\n{json.dumps(clustered_data, indent=2)[:30000]}"  # Increased context window
     print("[silver_model_generator] Prompt length:", len(prompt))
     print(f"[silver_model_generator] Using Snowflake Cortex model: {LLM_MODEL}")
  
