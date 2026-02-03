@@ -46,58 +46,57 @@ def generate_silver_model(clustered_data):
     target_schema = "SILVER"  # Explicitly move to SILVER schema
     
     system_prompt = f"""
-You are a senior data architect designing high-performance Silver-layer data models in Snowflake for CBRE.
+You are a senior data architect designing Silver-layer data models in Snowflake.
 
 CONTEXT
-- Input: Column clusters grouped by semantic similarity from multiple Bronze sources.
+- Input: Column clusters grouped by semantic similarity from Bronze sources.
 - Database: {target_db}
 - Schema: {target_schema}
 
-OVERALL TASK
-1. Design logical Silver entities (Dimensions and Facts). 
-   - Use "DIM_*" for Master/Reference data (e.g., DIM_COMPANY).
-   - Use "FACT_*" for transactional/measured data.
-2. OPTIMIZE FOR PERFORMANCE:
-   - Identify CORE business attributes as explicit columns.
-   - EVERYTHING ELSE (secondary/granular fields) MUST be grouped into a single Snowflake VARIANT column named "EXTENDED_PROPERTIES". 
-3. STRICT RETENTION POLICY:
-   - Every single column provided in the input clusters MUST appear in the "source_columns" list of at least one target attribute. 
-   - DO NOT drop any columns. If a column doesn't fit a core attribute, map it to the "EXTENDED_PROPERTIES" variant.
-4. For each entity, generate a complete Snowflake CREATE TABLE DDL.
+CRITICAL COLUMN MAPPING RULES:
+1. ONE-TO-ONE MAPPING: Create ONE explicit Silver target column for EACH bronze source column.
+   - DO NOT drop any columns.
+   - DO NOT group multiple columns into one (unless semantically identical, e.g., CUSTOMER_ID and CLIENT_ID can merge).
+   
+2. VARIANT DATATYPE:
+   - ONLY use VARIANT for source columns that are already semi-structured (VARIANT, OBJECT, ARRAY, JSON).
+   - DO NOT use VARIANT to consolidate regular VARCHAR/NUMBER/DATE columns.
 
-DATATYPES
-- CORE Metrics: NUMBER(38,2).
-- Primary Keys: VARCHAR(16777216).
-- Secondary Data: VARIANT (Mandatory for all unmapped/secondary fields).
-- Dates: DATE.
+3. ENTITY DESIGN:
+   - Use "DIM_*" for Master/Reference data.
+   - Use "FACT_*" for transactional data.
 
-DDL STYLE REQUIREMENTS
-- Use Snowflake SQL syntax.
+4. DATATYPE MAPPING:
+   - VARCHAR -> VARCHAR(16777216)
+   - NUMBER/FLOAT/DECIMAL -> NUMBER(38,X)
+   - DATE/TIMESTAMP -> DATE or TIMESTAMP_NTZ
+   - VARIANT/OBJECT/ARRAY -> VARIANT
+
+DDL STYLE:
 - Fully qualify table names: {target_db}.{target_schema}.<ENTITY_NAME>
-- Use "TRANSIENT TABLE" for cost efficiency.
+- Use TRANSIENT TABLE.
 
-OUTPUT FORMAT (STRICT)
-Return ONLY valid JSON.
+OUTPUT FORMAT (STRICT JSON):
 {{
   "entities": [
     {{
       "entity_name": "DIM_COMPANY",
-      "purpose": "Consolidated company master data",
-      "ddl": "CREATE OR REPLACE TRANSIENT TABLE {target_db}.{target_schema}.DIM_COMPANY (...);",
+      "purpose": "Company master data",
       "attributes": [
+        {{
+          "name": "COMPANY_ID",
+          "datatype": "VARCHAR(16777216)",
+          "nullable": false,
+          "is_pk": true,
+          "source_columns": ["BRONZE.TABLE.COMPANY_ID"],
+          "rationale": "Primary key, 1:1 mapping."
+        }},
         {{
           "name": "COMPANY_NAME",
           "datatype": "VARCHAR(16777216)",
           "nullable": true,
-          "source_columns": ["SCHEMA.TABLE.COL"],
-          "rationale": "Primary business name identified across source clusters with high semantic overlap."
-        }},
-        {{
-          "name": "EXTENDED_PROPERTIES",
-          "datatype": "VARIANT",
-          "description": "JSON object containing secondary source attributes for performance",
-          "source_columns": ["SCHEMA.TABLE.COL_A", "SCHEMA.TABLE.COL_B", "..."],
-          "rationale": "Grouping all remaining source attributes to ensure 100% data retention."
+          "source_columns": ["BRONZE.TABLE.NAME"],
+          "rationale": "Business name, 1:1 mapping."
         }}
       ]
     }}
