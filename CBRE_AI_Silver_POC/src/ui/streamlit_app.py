@@ -13,6 +13,9 @@ if str(src_dir) not in sys.path:
 
 from extract.profile_real_data import list_tables, list_schemas, get_connection, get_column_info
 from ai.bronze_silver_mapper import map_bronze_to_silver
+from ai.iterative_mapper import run_iterative_mapping, generate_column_descriptions, compute_embedding_similarity
+
+
 
 # ... imports remain ...
 
@@ -148,13 +151,49 @@ def list_tables_in_schema_cached(account, user, role, warehouse, database, schem
 # --- SIDEBAR: CONNECTION ---
 st.sidebar.header("🔌 Snowflake Connection")
 
-# Allow user to override env vars
-account = st.sidebar.text_input("Account", value=os.getenv("SNOWFLAKE_ACCOUNT", ""))
-user = st.sidebar.text_input("User", value=os.getenv("SNOWFLAKE_USER", ""))
-role = st.sidebar.text_input("Role", value=os.getenv("SNOWFLAKE_ROLE", ""))
-warehouse = st.sidebar.text_input("Warehouse", value=os.getenv("SNOWFLAKE_WAREHOUSE", ""))
-database = st.sidebar.text_input("Database", value=os.getenv("SNOWFLAKE_DATABASE", ""))
-schema = st.sidebar.text_input("Schema", value=os.getenv("SNOWFLAKE_SCHEMA", "SILVER"))
+# Initialize sidebar values from environment ONLY ONCE on first load
+if "sidebar_account" not in st.session_state:
+    st.session_state.sidebar_account = os.getenv("SNOWFLAKE_ACCOUNT", "")
+if "sidebar_user" not in st.session_state:
+    st.session_state.sidebar_user = os.getenv("SNOWFLAKE_USER", "")
+if "sidebar_role" not in st.session_state:
+    st.session_state.sidebar_role = os.getenv("SNOWFLAKE_ROLE", "")
+if "sidebar_warehouse" not in st.session_state:
+    st.session_state.sidebar_warehouse = os.getenv("SNOWFLAKE_WAREHOUSE", "")
+if "sidebar_database" not in st.session_state:
+    st.session_state.sidebar_database = os.getenv("SNOWFLAKE_DATABASE", "")
+if "sidebar_schema" not in st.session_state:
+    st.session_state.sidebar_schema = os.getenv("SNOWFLAKE_SCHEMA", "BRONZE")
+
+# Use session state as the source of truth (NOT os.environ)
+account = st.sidebar.text_input("Account", value=st.session_state.sidebar_account, key="account_input")
+user = st.sidebar.text_input("User", value=st.session_state.sidebar_user, key="user_input")
+role = st.sidebar.text_input("Role", value=st.session_state.sidebar_role, key="role_input")
+warehouse = st.sidebar.text_input("Warehouse", value=st.session_state.sidebar_warehouse, key="warehouse_input")
+database = st.sidebar.text_input("Database", value=st.session_state.sidebar_database, key="database_input")
+schema = st.sidebar.text_input("Bronze Schema (Source)", value=st.session_state.sidebar_schema, key="schema_input", help="Schema containing Bronze/source tables")
+
+# Update session state when user changes values
+st.session_state.sidebar_account = account
+st.session_state.sidebar_user = user
+st.session_state.sidebar_role = role
+st.session_state.sidebar_warehouse = warehouse
+st.session_state.sidebar_database = database
+st.session_state.sidebar_schema = schema
+
+# CRITICAL FIX: Snapshot Bronze database & schema NOW before Silver can pollute os.environ
+# Store in session state to ensure they're preserved across reruns
+if "bronze_db_snapshot" not in st.session_state:
+    st.session_state.bronze_db_snapshot = database
+if "bronze_schema_snapshot" not in st.session_state:
+    st.session_state.bronze_schema_snapshot = schema
+
+# Update snapshot only if sidebar values actually changed (user edited them)
+if database != "":
+    st.session_state.bronze_db_snapshot = database
+if schema != "":
+    st.session_state.bronze_schema_snapshot = schema
+
 
 if st.sidebar.button("Test Connection"):
     try:
@@ -205,30 +244,153 @@ is_mapping_mode = mode == "🔗 Map to Existing Silver Schema"
 
 st.subheader("1️⃣ Select Bronze Tables (Source)")
 
-# Fetch tables (Cached)
+# Use the protected snapshot values
+bronze_db = st.session_state.bronze_db_snapshot
+bronze_schema = st.session_state.bronze_schema_snapshot
+
+# Display current Bronze context
+st.caption(f"📍 **Bronze Context:** `{bronze_db}.{bronze_schema}` (from sidebar connection)")
+
+# Force reset environment to Bronze context
+os.environ["SNOWFLAKE_DATABASE"] = bronze_db
+os.environ["SNOWFLAKE_SCHEMA"] = bronze_schema
+
+# Fetch tables with explicit parameters (not relying on environment)
 tables = []
 try:
-    tables = list_tables_cached(account, user, role, warehouse, database, schema)
-except Exception:
-    st.info("Please configure connection in sidebar to see tables.")
+    tables = list_tables_cached(account, user, role, warehouse, bronze_db, bronze_schema)
+    st.caption(f"🔍 Debug: Found {len(tables)} tables in `{bronze_db}.{bronze_schema}`")
+except Exception as e:
+    st.info(f"Please configure connection in sidebar to see tables. Error: {e}")
 
-selected_tables = st.multiselect("Choose Bronze tables:", tables)
+# Store Bronze tables in session state
+if "bronze_selected" not in st.session_state:
+    st.session_state.bronze_selected = []
+
+# Create a unique key based on database and schema
+bronze_context_key = f"{bronze_db}_{bronze_schema}"
+if "bronze_context" not in st.session_state:
+    st.session_state.bronze_context = bronze_context_key
+
+# If context changed, reset selections
+if st.session_state.bronze_context != bronze_context_key:
+    st.session_state.bronze_selected = []
+    st.session_state.bronze_context = bronze_context_key
+
+# Filter to only valid selections
+valid_bronze = [t for t in st.session_state.bronze_selected if t in tables]
+
+# Debug info
+if len(st.session_state.bronze_selected) > 0:
+    st.caption(f"🔍 Debug: Session has {len(st.session_state.bronze_selected)} bronze tables, {len(valid_bronze)} are valid")
+
+selected_tables = st.multiselect(
+    "Choose Bronze tables:", 
+    tables,
+    default=valid_bronze,
+    key="bronze_multiselect"
+)
+
+# Store selection immediately
+st.session_state.bronze_selected = selected_tables
+
 
 # --- SILVER SCHEMA SELECTION (Mapping Mode Only) ---
 selected_silver_schema = None
 selected_silver_tables = []
 
 if is_mapping_mode:
-    st.subheader("1️⃣.b Select Silver Schema (Target)")
-    try:
-        available_schemas = list_schemas_cached(account, user, role, warehouse, database)
-        selected_silver_schema = st.selectbox("Silver Schema:", available_schemas, index=0 if available_schemas else 0)
-        
-        if selected_silver_schema:
-            silver_tables = list_tables_in_schema_cached(account, user, role, warehouse, database, selected_silver_schema)
-            selected_silver_tables = st.multiselect("Choose Silver tables to map to:", silver_tables)
-    except Exception as e:
-        st.warning(f"Could not load Silver schemas: {e}")
+    st.subheader("1️⃣.b Select Silver Target (Database/Schema/Tables)")
+    st.info("💡 **Tip:** Silver tables can be in a different database than Bronze. Specify the target database and schema below.")
+    
+    col_db, col_schema = st.columns(2)
+    
+    with col_db:
+        # Allow selecting a different database for Silver target
+        silver_database = st.text_input(
+            "Silver Database:", 
+            value=database, 
+            help="Database containing Silver target tables (can be different from Bronze)",
+            key="silver_db_input"
+        )
+        # Store in session state for later use
+        st.session_state['silver_database'] = silver_database
+    
+    with col_schema:
+        try:
+            # Save original database to restore after
+            original_db = os.environ.get("SNOWFLAKE_DATABASE", database)
+            
+            # Temporarily set to silver database for this query
+            os.environ["SNOWFLAKE_DATABASE"] = silver_database
+            available_schemas = list_schemas_cached(account, user, role, warehouse, silver_database)
+            
+            # Restore original database immediately
+            os.environ["SNOWFLAKE_DATABASE"] = original_db
+            
+            selected_silver_schema = st.selectbox(
+                "Silver Schema:", 
+                available_schemas, 
+                index=0 if available_schemas else 0,
+                key="silver_schema_selection"
+            )
+        except Exception as e:
+            st.warning(f"Could not load Silver schemas from `{silver_database}`: {e}")
+            available_schemas = []
+            selected_silver_schema = st.text_input("Silver Schema (manual):", value="SILVER", key="silver_schema_manual")
+            # Ensure we restore even on error
+            os.environ["SNOWFLAKE_DATABASE"] = database
+    
+    if selected_silver_schema:
+        try:
+            # Save original database
+            original_db = os.environ.get("SNOWFLAKE_DATABASE", database)
+            
+            # Temporarily set to silver database
+            os.environ["SNOWFLAKE_DATABASE"] = silver_database
+            silver_tables = list_tables_in_schema_cached(account, user, role, warehouse, silver_database, selected_silver_schema)
+            
+            # Restore original database immediately
+            os.environ["SNOWFLAKE_DATABASE"] = original_db
+            
+            # Store Silver tables in a more stable way
+            if "silver_selected" not in st.session_state:
+                st.session_state.silver_selected = []
+            
+            # Create context key for Silver
+            silver_context_key = f"{silver_database}_{selected_silver_schema}"
+            if "silver_context" not in st.session_state:
+                st.session_state.silver_context = silver_context_key
+            
+            # If context changed, reset selections
+            if st.session_state.silver_context != silver_context_key:
+                st.session_state.silver_selected = []
+                st.session_state.silver_context = silver_context_key
+            
+            # Filter to only valid selections
+            valid_silver = [t for t in st.session_state.silver_selected if t in silver_tables]
+            
+            selected_silver_tables = st.multiselect(
+                "Choose Silver tables to map to:", 
+                silver_tables,
+                default=valid_silver,
+                key="silver_multiselect"
+            )
+            
+            # Store selection immediately
+            st.session_state.silver_selected = selected_silver_tables
+            
+        except Exception as e:
+            st.warning(f"Could not load Silver tables: {e}")
+            # Ensure we restore even on error
+            os.environ["SNOWFLAKE_DATABASE"] = database
+
+    
+    # Store silver database for later use
+    st.session_state.silver_database = silver_database
+
+
+
 
 # --- COLUMN SELECTION ---
 selected_columns_map = {} # {table: [col1, col2]}
@@ -298,13 +460,21 @@ if st.button(profile_btn_label, use_container_width=True):
             conn = None
             all_profiles = {}
             try:
+                # Use Bronze snapshot values to ensure correct database context
+                bronze_db = st.session_state.bronze_db_snapshot
+                bronze_schema = st.session_state.bronze_schema_snapshot
+                
+                # Set environment to Bronze context before profiling
+                os.environ["SNOWFLAKE_DATABASE"] = bronze_db
+                os.environ["SNOWFLAKE_SCHEMA"] = bronze_schema
+                
                 conn = get_connection()
                 total_cols_profiled = 0
                 for table in selected_tables:
                     target_cols = selected_columns_map.get(table, [])
                     if not target_cols: continue
-                    st.write(f"Profiling `{table}` ({len(target_cols)} columns, {sample_pct}% sample)...")
-                    prof = profile_table_cached(account, user, role, warehouse, database, schema, table, tuple(target_cols), sample_pct)
+                    st.write(f"Profiling `{bronze_db}.{bronze_schema}.{table}` ({len(target_cols)} columns, {sample_pct}% sample)...")
+                    prof = profile_table_cached(account, user, role, warehouse, bronze_db, bronze_schema, table, tuple(target_cols), sample_pct)
                     all_profiles[table] = prof
                     total_cols_profiled += len(prof)
                 
@@ -445,51 +615,308 @@ if is_mapping_mode:
         )
         
         if st.button("🔗 Run AI Mapping", use_container_width=True):
-            with st.status("🔍 Running AI Bronze-to-Silver Mapping...", expanded=True) as status:
+            with st.status("🔍 Running Iterative AI Mapping...", expanded=True) as status:
                 try:
-                    # 1. Profile Silver tables
-                    st.write("Profiling Silver tables...")
+                    # 1. Profile Silver tables - use silver database
+                    st.write("📊 Profiling Silver target tables...")
                     silver_profiles = {}
+                    silver_db = st.session_state.get('silver_database', database)
                     conn = get_connection()
                     for s_table in selected_silver_tables:
+                        os.environ["SNOWFLAKE_DATABASE"] = silver_db
                         os.environ["SNOWFLAKE_SCHEMA"] = selected_silver_schema
-                        prof = profile_table_cached(account, user, role, warehouse, database, selected_silver_schema, s_table, (), 100)
+                        prof = profile_table_cached(account, user, role, warehouse, silver_db, selected_silver_schema, s_table, (), 100)
                         silver_profiles[s_table] = prof
+                        st.write(f"  ✓ Profiled `{silver_db}.{selected_silver_schema}.{s_table}`")
                     conn.close()
+
                     
-                    # 2. Run AI-powered mapping with business context
-                    st.write("Running intelligent AI mapping...")
-                    mappings = map_bronze_to_silver(
-                        bronze_profiles=st.session_state.profiles,
-                        silver_profiles=silver_profiles,
-                        bronze_descriptions=st.session_state.desc_data,
-                        silver_descriptions=None,
-                        business_context=business_context  # Pass user context
+                    # 2. Count columns for progress
+                    total_target_cols = sum(len(cols) for cols in silver_profiles.values() if isinstance(cols, dict))
+                    total_source_cols = sum(len(cols) for cols in st.session_state.profiles.values() if isinstance(cols, dict))
+                    st.write(f"🎯 Target: {total_target_cols} Silver columns | Source: {total_source_cols} Bronze columns")
+                    
+                    # 3. Generate semantic descriptions for better matching
+                    st.write("📝 Generating semantic descriptions for columns...")
+                    
+                    bronze_descriptions = generate_column_descriptions(
+                        st.session_state.profiles, 
+                        schema
                     )
+                    st.write(f"  ✓ Bronze descriptions: {sum(len(v) for v in bronze_descriptions.values())} columns")
                     
+                    silver_descriptions = generate_column_descriptions(
+                        silver_profiles, 
+                        selected_silver_schema
+                    )
+                    st.write(f"  ✓ Silver descriptions: {sum(len(v) for v in silver_descriptions.values())} columns")
+                    
+                    # 4. Compute embedding similarity for candidate filtering
+                    st.write("🔗 Computing embedding similarity matrix...")
+                    similarity_hints = compute_embedding_similarity(
+                        bronze_descriptions, 
+                        silver_descriptions
+                    )
+                    if similarity_hints:
+                        st.write(f"  ✓ Similarity computed for {len(similarity_hints)} target columns")
+                    
+                    # 5. Create progress bar
+                    progress_bar = st.progress(0, text="Initializing iterative mapping...")
+                    
+                    def update_progress(current, total, message):
+                        pct = current / total if total > 0 else 0
+                        progress_bar.progress(pct, text=message)
+                    
+                    # 6. Run iterative AI mapping with descriptions and similarity hints
+                    st.write("🤖 Running iterative batch mapping (5 target × 15 source per call)...")
+                    mappings = run_iterative_mapping(
+                        source_profiles=st.session_state.profiles,
+                        target_profiles=silver_profiles,
+                        source_schema_name=schema,  # Bronze schema from sidebar
+                        target_schema_name=selected_silver_schema,
+                        business_context=business_context,
+                        progress_callback=update_progress,
+                        source_descriptions=bronze_descriptions,
+                        target_descriptions=silver_descriptions,
+                        similarity_hints=similarity_hints
+                    )
+
+                    
+                    progress_bar.progress(1.0, text="Mapping complete!")
                     st.session_state.mapping_results = mappings
-                    status.update(label=f"✅ Mapping Complete! ({len(mappings)} columns mapped)", state="complete", expanded=False)
+                    status.update(label=f"✅ Iterative Mapping Complete! ({len(mappings)} mappings)", state="complete", expanded=False)
                     
                 except Exception as e:
+                    import traceback
                     st.error(f"Mapping Error: {e}")
+                    st.code(traceback.format_exc())
                     status.update(label="❌ Mapping Failed", state="error", expanded=True)
 
         
-        # Display mapping results
+        # Display mapping results with rich visualizations
         if "mapping_results" in st.session_state and st.session_state.mapping_results:
             st.write("---")
-            st.subheader("📊 Mapping Results")
+            st.subheader("📊 Mapping Results & Visualization")
             
             df_map = pd.DataFrame(st.session_state.mapping_results)
-            st.dataframe(df_map, use_container_width=True)
             
-            csv_data = df_map.to_csv(index=False)
-            st.download_button(
-                label="📥 Download Mapping CSV",
-                data=csv_data,
-                file_name="bronze_to_silver_mapping.csv",
-                mime="text/csv"
-            )
+            # Create tabs for different views
+            tab_table, tab_sankey, tab_json, tab_justify, tab_export = st.tabs([
+                "📋 Mapping Table", 
+                "🔀 Sankey Diagram", 
+                "🧠 JSON Model",
+                "🔍 AI Justifications",
+                "📥 Export"
+            ])
+            
+            with tab_table:
+                st.write("**Complete Column-Level Mapping**")
+                st.dataframe(df_map, use_container_width=True, height=400)
+                
+                # Statistics
+                total_mappings = len(df_map)
+                mapped_count = len(df_map[df_map['SourceColumn'] != 'UNMAPPED'])
+                unmapped_count = len(df_map[df_map['SourceColumn'] == 'UNMAPPED'])
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Mappings", total_mappings)
+                with col2:
+                    st.metric("Mapped Columns", mapped_count, delta=f"{mapped_count/total_mappings*100:.1f}%" if total_mappings else "0%")
+                with col3:
+                    st.metric("Unmapped Columns", unmapped_count, delta_color="inverse")
+            
+            with tab_sankey:
+                st.write("**Visual Column-Level Mapping Flow**")
+                try:
+                    import plotly.graph_objects as go
+                    
+                    # Build Sankey data - only for mapped columns
+                    mapped_df = df_map[df_map['SourceColumn'] != 'UNMAPPED'].copy()
+                    
+                    if len(mapped_df) > 0:
+                        # Get unique source and target nodes
+                        source_nodes = mapped_df.apply(lambda r: f"{r.get('SourceTable', 'SRC')}.{r.get('SourceColumn', 'col')}", axis=1).unique().tolist()
+                        target_nodes = mapped_df.apply(lambda r: f"{r.get('TargetTable', 'TGT')}.{r.get('TargetColumn', 'col')}", axis=1).unique().tolist()
+                        
+                        # Create node list: sources first, then targets
+                        all_nodes = source_nodes + target_nodes
+                        node_indices = {node: i for i, node in enumerate(all_nodes)}
+                        
+                        # Build links
+                        sources = []
+                        targets = []
+                        values = []
+                        hover_texts = []
+                        
+                        for _, row in mapped_df.iterrows():
+                            src_node = f"{row.get('SourceTable', 'SRC')}.{row.get('SourceColumn', 'col')}"
+                            tgt_node = f"{row.get('TargetTable', 'TGT')}.{row.get('TargetColumn', 'col')}"
+                            
+                            if src_node in node_indices and tgt_node in node_indices:
+                                sources.append(node_indices[src_node])
+                                targets.append(node_indices[tgt_node])
+                                values.append(1)
+                                hover_texts.append(row.get('Justification', '')[:100])
+                        
+                        # Colors: blue for source, green for target
+                        node_colors = ['#3498db'] * len(source_nodes) + ['#27ae60'] * len(target_nodes)
+                        
+                        fig = go.Figure(data=[go.Sankey(
+                            node=dict(
+                                pad=15,
+                                thickness=20,
+                                line=dict(color="black", width=0.5),
+                                label=all_nodes,
+                                color=node_colors
+                            ),
+                            link=dict(
+                                source=sources,
+                                target=targets,
+                                value=values,
+                                customdata=hover_texts,
+                                hovertemplate='%{customdata}<extra></extra>'
+                            )
+                        )])
+                        
+                        fig.update_layout(
+                            title_text="Bronze → Silver Column Mapping Flow",
+                            font_size=10,
+                            height=600
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.warning("No mapped columns to display in Sankey diagram.")
+                        
+                except ImportError:
+                    st.warning("Install plotly for Sankey diagram: `pip install plotly`")
+                    st.info("Falling back to Mermaid diagram...")
+                    
+                    # Mermaid fallback
+                    unique_links = set()
+                    for _, row in df_map.iterrows():
+                        if row.get('SourceColumn') != 'UNMAPPED':
+                            unique_links.add((row.get('SourceTable', 'SRC'), row.get('TargetTable', 'TGT')))
+                    
+                    if unique_links:
+                        mermaid_lines = ["graph LR", "  subgraph Bronze"]
+                        for s_table in sorted(set(r[0] for r in unique_links)):
+                            s_id = s_table.replace(".", "_").replace(" ", "_")
+                            mermaid_lines.append(f"    B_{s_id}[\"{s_table}\"]")
+                        mermaid_lines.append("  end\n  subgraph Silver")
+                        for t_table in sorted(set(r[1] for r in unique_links)):
+                            t_id = t_table.replace(".", "_").replace(" ", "_")
+                            mermaid_lines.append(f"    S_{t_id}[\"{t_table}\"]")
+                        mermaid_lines.append("  end")
+                        for s_table, t_table in sorted(unique_links):
+                            s_id = s_table.replace(".", "_").replace(" ", "_")
+                            t_id = t_table.replace(".", "_").replace(" ", "_")
+                            mermaid_lines.append(f"  B_{s_id} --> S_{t_id}")
+                        st.markdown(f"```mermaid\n" + "\n".join(mermaid_lines) + "\n```")
+            
+            with tab_json:
+                st.write("**Raw Mapping Model (JSON Format)**")
+                
+                # Convert flat results to nested JSON structure
+                nested_model = {"mapped_columns": []}
+                
+                # Group by target column
+                for target_col in df_map['TargetColumn'].unique():
+                    target_rows = df_map[df_map['TargetColumn'] == target_col]
+                    first_row = target_rows.iloc[0]
+                    
+                    source_mappings = []
+                    for _, row in target_rows.iterrows():
+                        if row.get('SourceColumn') != 'UNMAPPED':
+                            source_mappings.append({
+                                "source_column_name": row.get('SourceColumn', ''),
+                                "source_table_name": row.get('SourceTable', ''),
+                                "source_schema_name": row.get('SourceSchema', ''),
+                                "justification": row.get('Justification', '')
+                            })
+                    
+                    nested_model["mapped_columns"].append({
+                        "target_column_name": target_col,
+                        "target_table_name": first_row.get('TargetTable', ''),
+                        "target_schema_name": first_row.get('TargetSchema', ''),
+                        "source_column_name": source_mappings,
+                        "final_transformation_logic": first_row.get('TransformationLogic', ''),
+                        "work_notes": first_row.get('WorkNotes', '')
+                    })
+                
+                st.json(nested_model)
+                
+                # Download JSON
+                json_str = json.dumps(nested_model, indent=2)
+                st.download_button(
+                    "📥 Download JSON Model",
+                    json_str,
+                    "mapping_model.json",
+                    "application/json"
+                )
+            
+            with tab_justify:
+                st.write("**AI Justifications & Transformation Logic**")
+                
+                # Group by target table for easier navigation
+                for target_table in df_map['TargetTable'].unique():
+                    table_rows = df_map[df_map['TargetTable'] == target_table]
+                    
+                    with st.expander(f"🎯 **{target_table}** ({len(table_rows)} columns)", expanded=True):
+                        for _, row in table_rows.iterrows():
+                            source_info = f"{row.get('SourceTable', 'N/A')}.{row.get('SourceColumn', 'N/A')}"
+                            target_info = row.get('TargetColumn', 'N/A')
+                            
+                            if row.get('SourceColumn') == 'UNMAPPED':
+                                st.markdown(f"❌ **{target_info}** → `UNMAPPED`")
+                            else:
+                                st.markdown(f"✅ **{target_info}** ← `{source_info}`")
+                                
+                                if row.get('Justification'):
+                                    st.caption(f"💡 *{row.get('Justification')}*")
+                                
+                                if row.get('TransformationLogic'):
+                                    st.code(row.get('TransformationLogic'), language="sql")
+                                
+                                if row.get('WorkNotes') and row.get('WorkNotes') != 'Awaiting initial scan.':
+                                    st.info(f"📝 Work Notes: {row.get('WorkNotes')}")
+                            
+                            st.markdown("---")
+            
+            with tab_export:
+                st.write("**Export Options**")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    csv_data = df_map.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download Full CSV",
+                        data=csv_data,
+                        file_name="bronze_to_silver_mapping.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                
+                with col2:
+                    # Mapped only CSV
+                    mapped_only = df_map[df_map['SourceColumn'] != 'UNMAPPED']
+                    csv_mapped = mapped_only.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download Mapped Only CSV",
+                        data=csv_mapped,
+                        file_name="bronze_to_silver_mapped_only.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                
+                st.write("---")
+                st.write("**Quick Stats:**")
+                st.write(f"- Total target columns: **{len(df_map['TargetColumn'].unique())}**")
+                st.write(f"- Source tables used: **{len(df_map[df_map['SourceTable'] != 'UNMAPPED']['SourceTable'].unique())}**")
+                st.write(f"- Target tables: **{len(df_map['TargetTable'].unique())}**")
+
 
 else:
     # --- ORIGINAL GENERATION MODE PIPELINE ---

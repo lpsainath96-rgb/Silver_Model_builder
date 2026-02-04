@@ -95,21 +95,35 @@ def profile_column(conn, table_name: str, column_name: str, datatype: str) -> Di
     full_table = f'"{schema}"."{table_name.upper()}"'
     col = f'"{column_name.upper()}"'
     
-    # Improved stats query: Treats physical NULLs, empty strings, whitespace, 
-    # and common placeholders (N/A, NULL, NONE) as "Incomplete".
-    stats_sql = f"""
-        SELECT 
-            COUNT(*) AS total,
-            COUNT({col}) AS physical_valid,
-            COUNT(CASE 
-                WHEN {col} IS NULL THEN NULL
-                WHEN TRIM(CAST({col} AS STRING)) = '' THEN NULL
-                WHEN UPPER(TRIM(CAST({col} AS STRING))) IN ('N/A', 'NA', 'NULL', 'NONE', '<NULL>', '.') THEN NULL
-                ELSE 1 
-            END) AS robust_valid,
-            APPROX_COUNT_DISTINCT({col}) AS distinct_count
-        FROM {full_table}
-    """
+    # Check if this is a special data type that can't be cast to STRING
+    unsupported_types = ("GEOMETRY", "GEOGRAPHY", "VARIANT", "OBJECT", "ARRAY")
+    is_special_type = any(datatype.upper().startswith(t) for t in unsupported_types)
+    
+    # For special types, use simpler profiling without string operations or APPROX_COUNT_DISTINCT
+    if is_special_type:
+        stats_sql = f"""
+            SELECT 
+                COUNT(*) AS total,
+                COUNT({col}) AS physical_valid,
+                COUNT({col}) AS robust_valid,
+                0 AS distinct_count
+            FROM {full_table}
+        """
+    else:
+        # Improved stats query for normal types
+        stats_sql = f"""
+            SELECT 
+                COUNT(*) AS total,
+                COUNT({col}) AS physical_valid,
+                COUNT(CASE 
+                    WHEN {col} IS NULL THEN NULL
+                    WHEN TRIM(CAST({col} AS STRING)) = '' THEN NULL
+                    WHEN UPPER(TRIM(CAST({col} AS STRING))) IN ('N/A', 'NA', 'NULL', 'NONE', '<NULL>', '.') THEN NULL
+                    ELSE 1 
+                END) AS robust_valid,
+                APPROX_COUNT_DISTINCT({col}) AS distinct_count
+            FROM {full_table}
+        """
     
     with conn.cursor() as cur:
         cur.execute(stats_sql)
@@ -126,36 +140,38 @@ def profile_column(conn, table_name: str, column_name: str, datatype: str) -> Di
         "sample_values": [],
     }
     
-    # Get top values (most frequent)
-    try:
-        top_sql = f"""
-            SELECT {col}, COUNT(*) AS cnt 
-            FROM {full_table} 
-            WHERE {col} IS NOT NULL
-            GROUP BY {col} 
-            ORDER BY cnt DESC 
-            LIMIT 3
-        """
-        with conn.cursor() as cur:
-            cur.execute(top_sql)
-            # Store as list of dicts for easier charting
-            profile["top_values"] = [{"value": str(row[0]), "count": int(row[1])} for row in cur.fetchall()]
-    except Exception:
-        pass  # Some column types may not support GROUP BY
+    # Get top values (most frequent) - skip for special types
+    if not is_special_type:
+        try:
+            top_sql = f"""
+                SELECT {col}, COUNT(*) AS cnt 
+                FROM {full_table} 
+                WHERE {col} IS NOT NULL
+                GROUP BY {col} 
+                ORDER BY cnt DESC 
+                LIMIT 3
+            """
+            with conn.cursor() as cur:
+                cur.execute(top_sql)
+                # Store as list of dicts for easier charting
+                profile["top_values"] = [{"value": str(row[0]), "count": int(row[1])} for row in cur.fetchall()]
+        except Exception:
+            pass  # Some column types may not support GROUP BY
     
-    # Get sample values
-    try:
-        sample_sql = f"""
-            SELECT DISTINCT {col} 
-            FROM {full_table} 
-            WHERE {col} IS NOT NULL 
-            LIMIT 2
-        """
-        with conn.cursor() as cur:
-            cur.execute(sample_sql)
-            profile["sample_values"] = [str(row[0]) for row in cur.fetchall()]
-    except Exception:
-        pass
+    # Get sample values - skip for special types
+    if not is_special_type:
+        try:
+            sample_sql = f"""
+                SELECT DISTINCT {col} 
+                FROM {full_table} 
+                WHERE {col} IS NOT NULL 
+                LIMIT 2
+            """
+            with conn.cursor() as cur:
+                cur.execute(sample_sql)
+                profile["sample_values"] = [str(row[0]) for row in cur.fetchall()]
+        except Exception:
+            pass
     
     # Get min/max for numeric types
     numeric_types = ("NUMBER", "FLOAT", "INT", "DECIMAL", "DOUBLE", "REAL")
@@ -200,24 +216,37 @@ def profile_table(conn, table_name: str, target_columns: List[str] = None, sampl
 
     # --- STEP 1: BATCH BASIC STATS ---
     select_clauses = ["COUNT(*) AS TOTAL_ROWS"]
+    
+    # Define unsupported types that can't be cast to STRING or use with aggregate functions
+    unsupported_types = ("GEOMETRY", "GEOGRAPHY", "VARIANT", "OBJECT", "ARRAY")
+    
     for col in columns_info:
         c_name = col["name"].upper()
         c_ref = f'"{c_name}"'
+        c_dtype = col["datatype"].upper()
         
-        # Robust valid logic
-        select_clauses.append(f"""
-            COUNT(CASE 
-                WHEN {c_ref} IS NULL THEN NULL
-                WHEN TRIM(CAST({c_ref} AS STRING)) = '' THEN NULL
-                WHEN UPPER(TRIM(CAST({c_ref} AS STRING))) IN ('N/A', 'NA', 'NULL', 'NONE', '<NULL>', '.') THEN NULL
-                ELSE 1 
-            END) AS {c_name}_ROB_VALID""")
+        # Check if this is a special type
+        is_special_type = any(c_dtype.startswith(t) for t in unsupported_types)
         
-        select_clauses.append(f'COUNT({c_ref}) AS {c_name}_PHYS_VALID')
-        select_clauses.append(f'APPROX_COUNT_DISTINCT({c_ref}) AS {c_name}_DISTINCT')
+        if is_special_type:
+            # Simpler stats for special types (no string casting, no distinct count)
+            select_clauses.append(f'COUNT({c_ref}) AS {c_name}_ROB_VALID')
+            select_clauses.append(f'COUNT({c_ref}) AS {c_name}_PHYS_VALID')
+            # Note: We skip APPROX_COUNT_DISTINCT for special types as it uses HLL_ACCUMULATE which doesn't support them
+        else:
+            # Robust valid logic with string operations
+            select_clauses.append(f"""
+                COUNT(CASE 
+                    WHEN {c_ref} IS NULL THEN NULL
+                    WHEN TRIM(CAST({c_ref} AS STRING)) = '' THEN NULL
+                    WHEN UPPER(TRIM(CAST({c_ref} AS STRING))) IN ('N/A', 'NA', 'NULL', 'NONE', '<NULL>', '.') THEN NULL
+                    ELSE 1 
+                END) AS {c_name}_ROB_VALID""")
+            select_clauses.append(f'COUNT({c_ref}) AS {c_name}_PHYS_VALID')
+            select_clauses.append(f'APPROX_COUNT_DISTINCT({c_ref}) AS {c_name}_DISTINCT')
         
         numeric_types = ("NUMBER", "FLOAT", "INT", "DECIMAL", "DOUBLE", "REAL", "DATE", "TIMESTAMP")
-        if col["datatype"].upper().startswith(numeric_types):
+        if c_dtype.startswith(numeric_types):
              select_clauses.append(f'MIN({c_ref}) AS {c_name}_MIN')
              select_clauses.append(f'MAX({c_ref}) AS {c_name}_MAX')
 
@@ -244,6 +273,7 @@ def profile_table(conn, table_name: str, target_columns: List[str] = None, sampl
         
         rob_valid = stats_map.get(f"{c_name}_ROB_VALID", 0)
         phys_valid = stats_map.get(f"{c_name}_PHYS_VALID", 0)
+        # Distinct count may not exist for special types (GEOMETRY, GEOGRAPHY, etc.)
         distinct = stats_map.get(f"{c_name}_DISTINCT", 0)
         
         profile = {
