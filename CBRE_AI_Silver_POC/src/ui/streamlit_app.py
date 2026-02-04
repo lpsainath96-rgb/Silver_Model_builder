@@ -11,7 +11,8 @@ src_dir = base_dir / "src"
 if str(src_dir) not in sys.path:
     sys.path.append(str(src_dir))
 
-from extract.profile_real_data import list_tables, get_connection
+from extract.profile_real_data import list_tables, list_schemas, get_connection, get_column_info
+from ai.bronze_silver_mapper import map_bronze_to_silver
 
 # ... imports remain ...
 
@@ -32,7 +33,7 @@ class SnowflakeEncoder(json.JSONEncoder):
         return super().default(obj)
 
 st.set_page_config(page_title="Silver Model Builder", layout="wide")
-st.title("Silver Model Builder: Control Center")
+st.title("Silver Model Builder")
 
 # --- CACHED UTILS ---
 # We wrap the imported functions to cache their results.
@@ -116,6 +117,34 @@ def get_embeddings_cached(texts):
 def generate_silver_model_cached(cluster_payload):
     return generate_silver_model(cluster_payload)
 
+@st.cache_data(ttl=600, show_spinner=False)
+def list_schemas_cached(account, user, role, warehouse, database):
+    """List all schemas in the database."""
+    os.environ["SNOWFLAKE_ACCOUNT"] = account or ""
+    os.environ["SNOWFLAKE_USER"] = user or ""
+    os.environ["SNOWFLAKE_ROLE"] = role or ""
+    os.environ["SNOWFLAKE_WAREHOUSE"] = warehouse or ""
+    os.environ["SNOWFLAKE_DATABASE"] = database or ""
+    conn = get_connection()
+    try:
+        return list_schemas(conn)
+    finally:
+        conn.close()
+
+@st.cache_data(ttl=600, show_spinner=False)
+def list_tables_in_schema_cached(account, user, role, warehouse, database, schema):
+    """List tables in a specific schema."""
+    os.environ["SNOWFLAKE_ACCOUNT"] = account or ""
+    os.environ["SNOWFLAKE_USER"] = user or ""
+    os.environ["SNOWFLAKE_ROLE"] = role or ""
+    os.environ["SNOWFLAKE_WAREHOUSE"] = warehouse or ""
+    os.environ["SNOWFLAKE_DATABASE"] = database or ""
+    conn = get_connection()
+    try:
+        return list_tables(conn, schema=schema, limit=200)
+    finally:
+        conn.close()
+
 # --- SIDEBAR: CONNECTION ---
 st.sidebar.header("🔌 Snowflake Connection")
 
@@ -144,17 +173,14 @@ if st.sidebar.button("Test Connection"):
         st.sidebar.error(f"❌ Connection Failed: {e}")
 
 
+
 # --- MAIN PANEL ---
 
-import json
-from extract.profile_real_data import list_tables, profile_table, get_connection, get_column_info
 from profiling.generate_long_descriptions import generate_descriptions
 from ai.semantic_clustering import build_texts, get_embeddings_snowflake, cluster, fallback_embeddings
 from ai.silver_model_generator import generate_silver_model
 from ai.generate_silver_snowflake_ddl import parse_robust, sanitize, build_column_line, DEFAULT_PK_CANDIDATES
-# ... (Connection code remains same, omitted for brevity in replacement if possible, but here we replace whole file context usually so let's keep it safe or assume partial replacement if I knew line numbers perfectly. Assuming I replace the whole MAIN PANEL logic onwards)
-
-# ... (Previous sidebar code ends around line 48)
+from extract.profile_real_data import profile_table
 
 # --- SESSION STATE ---
 if "profiles" not in st.session_state:
@@ -164,9 +190,20 @@ if "model_data" not in st.session_state:
 if "desc_data" not in st.session_state:
     st.session_state.desc_data = None
 
-# --- MAIN PANEL ---
 
-st.subheader("1️⃣ Select Bronze Tables")
+# --- MODE TOGGLE ---
+
+st.subheader("🎯 Mode Selection")
+mode = st.radio(
+    "Choose pipeline mode:",
+    ["🔨 Generate New Silver Model", "🔗 Map to Existing Silver Schema"],
+    horizontal=True,
+    key="pipeline_mode"
+)
+
+is_mapping_mode = mode == "🔗 Map to Existing Silver Schema"
+
+st.subheader("1️⃣ Select Bronze Tables (Source)")
 
 # Fetch tables (Cached)
 tables = []
@@ -175,10 +212,27 @@ try:
 except Exception:
     st.info("Please configure connection in sidebar to see tables.")
 
-selected_tables = st.multiselect("Choose tables:", tables)
+selected_tables = st.multiselect("Choose Bronze tables:", tables)
+
+# --- SILVER SCHEMA SELECTION (Mapping Mode Only) ---
+selected_silver_schema = None
+selected_silver_tables = []
+
+if is_mapping_mode:
+    st.subheader("1️⃣.b Select Silver Schema (Target)")
+    try:
+        available_schemas = list_schemas_cached(account, user, role, warehouse, database)
+        selected_silver_schema = st.selectbox("Silver Schema:", available_schemas, index=0 if available_schemas else 0)
+        
+        if selected_silver_schema:
+            silver_tables = list_tables_in_schema_cached(account, user, role, warehouse, database, selected_silver_schema)
+            selected_silver_tables = st.multiselect("Choose Silver tables to map to:", silver_tables)
+    except Exception as e:
+        st.warning(f"Could not load Silver schemas: {e}")
 
 # --- COLUMN SELECTION ---
 selected_columns_map = {} # {table: [col1, col2]}
+
 
 if selected_tables:
     st.subheader("2️⃣ Select Target Columns")
@@ -224,17 +278,23 @@ if selected_tables:
 st.write("---")
 
 # --- PHASE 1: PROFILING ---
-st.subheader("3️⃣ Profiling")
+if is_mapping_mode:
+    st.subheader("3️⃣ Profile Bronze Source Data")
+else:
+    st.subheader("3️⃣ Profiling")
 
 col1, col2 = st.columns([2, 1])
 with col2:
     sample_pct = st.slider("Sample Rate (%)", 1, 100, 100, help="For tables with millions of rows, use a lower sample rate (e.g., 10%) for instant results.")
 
-if st.button("🔍 Profile Data", use_container_width=True):
+profile_btn_label = "🔍 Profile Bronze Data" if is_mapping_mode else "🔍 Profile Data"
+if st.button(profile_btn_label, use_container_width=True):
     if not selected_tables:
         st.warning("Please select at least one table.")
     else:
-        with st.status("🛠️ Running Data Quality Analysis...", expanded=True) as status:
+        status_msg = "🛠️ Analyzing Bronze Source Data..." if is_mapping_mode else "🛠️ Running Data Quality Analysis..."
+        with st.status(status_msg, expanded=True) as status:
+
             conn = None
             all_profiles = {}
             try:
@@ -263,7 +323,11 @@ if st.button("🔍 Profile Data", use_container_width=True):
 
 if st.session_state.profiles:
     st.write("---")
-    st.subheader("📊 Data Quality Grid")
+    if is_mapping_mode:
+        st.subheader("📊 Bronze Source Analysis")
+    else:
+        st.subheader("📊 Data Quality Grid")
+
     
     # Flatten all columns for the rich table
     all_col_stats = []
@@ -361,144 +425,215 @@ if st.session_state.profiles:
 
 # --- PHASE 2: AI MODELING ---
 st.write("---")
-st.subheader("4️⃣ AI Silver Model Generation")
 
-if not st.session_state.profiles:
-    st.info("Please run profiling above to unlock AI modeling.")
-else:
-    if st.button("🚀 Start AI Silver Modeling", use_container_width=True):
-        monitor_placeholder = st.empty()
-        progress = st.progress(0)
+if is_mapping_mode:
+    # --- MAPPING MODE PIPELINE ---
+    st.subheader("4️⃣ AI Bronze-to-Silver Mapping")
+    
+    if not st.session_state.profiles:
+        st.info("Please run Bronze profiling above first.")
+    elif not selected_silver_tables:
+        st.info("Please select Silver target tables above.")
+    else:
+        # Business Context Input
+        st.markdown("**📝 Business Context (Optional)**")
+        business_context = st.text_area(
+            "Describe how the Bronze tables relate to Silver, naming conventions, or any mapping hints:",
+            placeholder="Example: The Bronze tables are different CRM systems. The Silver table is a unified customer view. CUST_ID maps to CUSTOMER_KEY, EMAIL maps to EMAIL_ADDRESS...",
+            height=100,
+            key="business_context"
+        )
         
-        pipeline_steps = [
-            "1. AI Description Generation",
-            "2. Semantic Clustering",
-            "3. Silver Model Logic Design",
-            "4. Snowflake DDL Emission"
-        ]
+        if st.button("🔗 Run AI Mapping", use_container_width=True):
+            with st.status("🔍 Running AI Bronze-to-Silver Mapping...", expanded=True) as status:
+                try:
+                    # 1. Profile Silver tables
+                    st.write("Profiling Silver tables...")
+                    silver_profiles = {}
+                    conn = get_connection()
+                    for s_table in selected_silver_tables:
+                        os.environ["SNOWFLAKE_SCHEMA"] = selected_silver_schema
+                        prof = profile_table_cached(account, user, role, warehouse, database, selected_silver_schema, s_table, (), 100)
+                        silver_profiles[s_table] = prof
+                    conn.close()
+                    
+                    # 2. Run AI-powered mapping with business context
+                    st.write("Running intelligent AI mapping...")
+                    mappings = map_bronze_to_silver(
+                        bronze_profiles=st.session_state.profiles,
+                        silver_profiles=silver_profiles,
+                        bronze_descriptions=st.session_state.desc_data,
+                        silver_descriptions=None,
+                        business_context=business_context  # Pass user context
+                    )
+                    
+                    st.session_state.mapping_results = mappings
+                    status.update(label=f"✅ Mapping Complete! ({len(mappings)} columns mapped)", state="complete", expanded=False)
+                    
+                except Exception as e:
+                    st.error(f"Mapping Error: {e}")
+                    status.update(label="❌ Mapping Failed", state="error", expanded=True)
 
-        def update_monitor(active_idx):
-            with monitor_placeholder.container(border=True):
-                st.write("### 🛤️ AI Pipeline Process Monitor")
-                cols = st.columns(len(pipeline_steps))
-                for i, name in enumerate(pipeline_steps):
-                    with cols[i]:
-                        if i < active_idx:
-                            st.markdown(f"✅ **{name}**\n\nDone")
-                        elif i == active_idx:
-                            st.markdown(f"⏳ **{name}**\n\nRunning...")
-                        else:
-                            st.markdown(f"⚪ **{name}**\n\nPending")
-                if active_idx < len(pipeline_steps):
-                    st.write(f"Current Activity: **{pipeline_steps[active_idx]}**")
-                else:
-                    st.write("Current Activity: **🏁 Pipeline Complete**")
+        
+        # Display mapping results
+        if "mapping_results" in st.session_state and st.session_state.mapping_results:
+            st.write("---")
+            st.subheader("📊 Mapping Results")
+            
+            df_map = pd.DataFrame(st.session_state.mapping_results)
+            st.dataframe(df_map, use_container_width=True)
+            
+            csv_data = df_map.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Mapping CSV",
+                data=csv_data,
+                file_name="bronze_to_silver_mapping.csv",
+                mime="text/csv"
+            )
 
-        try:
-            all_profiles = st.session_state.profiles
+else:
+    # --- ORIGINAL GENERATION MODE PIPELINE ---
+    st.subheader("4️⃣ AI Silver Model Generation")
+    
+    if not st.session_state.profiles:
+        st.info("Please run profiling above to unlock AI modeling.")
+    else:
+        if st.button("🚀 Start AI Silver Modeling", use_container_width=True):
+            monitor_placeholder = st.empty()
+            progress = st.progress(0)
             
-            # Convert to "Metadata" format required by description generator
-            metadata_struct = {}
-            for t, p in all_profiles.items():
-                metadata_struct[t] = {"columns": [{"name": k, "datatype": v.get("datatype")} for k, v in p.items()]}
-            
-            # 1. DESCRIPTIONS
-            update_monitor(0)
-            progress.progress(0.25)
-            desc_data = generate_descriptions_cached(metadata_struct, all_profiles)
-            st.session_state.desc_data = desc_data
-            
-            # 2. CLUSTERING
-            update_monitor(1)
-            progress.progress(0.5)
-            texts = build_texts(desc_data)
-            labels = [t.split(':', 1)[0] for t in texts]
-            
+            pipeline_steps = [
+                "1. AI Description Generation",
+                "2. Semantic Clustering",
+                "3. Silver Model Logic Design",
+                "4. Snowflake DDL Emission"
+            ]
+
+
+            def update_monitor(active_idx):
+                with monitor_placeholder.container(border=True):
+                    st.write("### 🛤️ AI Pipeline Process Monitor")
+                    cols = st.columns(len(pipeline_steps))
+                    for i, name in enumerate(pipeline_steps):
+                        with cols[i]:
+                            if i < active_idx:
+                                st.markdown(f"✅ **{name}**\n\nDone")
+                            elif i == active_idx:
+                                st.markdown(f"⏳ **{name}**\n\nRunning...")
+                            else:
+                                st.markdown(f"⚪ **{name}**\n\nPending")
+                    if active_idx < len(pipeline_steps):
+                        st.write(f"Current Activity: **{pipeline_steps[active_idx]}**")
+                    else:
+                        st.write("Current Activity: **🏁 Pipeline Complete**")
+
             try:
-                embeds = get_embeddings_cached(texts)
+                all_profiles = st.session_state.profiles
+                
+                # Convert to "Metadata" format required by description generator
+                metadata_struct = {}
+                for t, p in all_profiles.items():
+                    metadata_struct[t] = {"columns": [{"name": k, "datatype": v.get("datatype")} for k, v in p.items()]}
+                
+                # 1. DESCRIPTIONS
+                update_monitor(0)
+                progress.progress(0.25)
+                desc_data = generate_descriptions_cached(metadata_struct, all_profiles)
+                st.session_state.desc_data = desc_data
+                
+                # 2. CLUSTERING
+                update_monitor(1)
+                progress.progress(0.5)
+                texts = build_texts(desc_data)
+                labels = [t.split(':', 1)[0] for t in texts]
+                
+                try:
+                    embeds = get_embeddings_cached(texts)
+                except Exception as e:
+                    st.warning(f"Snowflake Embed failed ({e}), falling back to TF-IDF")
+                    embeds = fallback_embeddings(texts)
+                    
+                clusters = cluster(embeds, labels, k=max(2, int(len(texts)**0.5)))
+                cluster_payload = {'embed_model': 'ui-run', 'cluster_count': len(clusters), 'clusters': clusters}
+                
+                # 3. SILVER MODEL
+                update_monitor(2)
+                progress.progress(0.75)
+                model_json_str = generate_silver_model_cached(cluster_payload)
+                model_data = parse_robust(model_json_str)
+                if isinstance(model_data, str):
+                    model_data = parse_robust(model_data)
+                st.session_state.model_data = model_data
+
+                if not isinstance(model_data, dict) or "entities" not in model_data:
+                    st.error("Failed to generate valid model JSON from LLM.")
+                    st.stop()
+                    
+                # 4. DDL GENERATION
+                update_monitor(3)
+                progress.progress(0.9)
+                
+                ddl_statements = []
+                csv_rows = []
+                target_schema = "SILVER"
+                
+                for entity in model_data.get("entities", []):
+                    t_name = sanitize(entity.get("entity_name"))
+                    attrs_sql = []
+                    pk_cols = []
+                    
+                    for attr in entity.get("attributes", []):
+                        col = sanitize(attr.get("name"))
+                        dtype = attr.get("datatype")
+                        desc = attr.get("description", "")
+                        desc_safe = desc.replace("'", "''")
+                        attrs_sql.append(f"    {col} {dtype} COMMENT '{desc_safe}'")
+                        
+                        if attr.get("is_pk") or col in DEFAULT_PK_CANDIDATES:
+                            pk_cols.append(col)
+                        
+                        src_cols = attr.get("source_columns", [])
+                        if not src_cols: src_cols = ["UNKNOWN.UNKNOWN.UNKNOWN"]
+                            
+                        for src in src_cols:
+                            parts = src.split('.')
+                            if len(parts) == 3: s_schema, s_table, s_col = parts
+                            elif len(parts) == 2: s_schema, s_table, s_col = schema, parts[0], parts[1]
+                            else: s_schema, s_table, s_col = schema, "UNKNOWN", parts[0]
+                            
+                            s_desc = ""
+                            if s_table in desc_data and s_col in desc_data[s_table]:
+                                s_desc = desc_data[s_table][s_col]
+                            
+                            s_type = ""
+                            if s_table in all_profiles and s_col in all_profiles[s_table]:
+                                s_type = all_profiles[s_table][s_col].get("datatype", "")
+
+                            csv_rows.append({
+                                "SourceSchema": s_schema, "SourceTableName": s_table, "SourceColumn": s_col,
+                                "SourceDescription": s_desc, "SourceDataType": s_type,
+                                "TargetSchema": target_schema, "TargetTableName": t_name, "TargetColumn": col,
+                                "TargetDataType": dtype, "TargetDescription": desc,
+                                "TransformationRule": "Direct Map" if s_col == col else "Renamed/Transformed",
+                                "MappingRationale": attr.get("rationale", "Standard business mapping")
+                            })
+                    
+                    pk_clause = f",\n    PRIMARY KEY ({', '.join(pk_cols)})" if pk_cols else ""
+                    full_name = f"{database}.{target_schema}.{t_name}"
+                    ddl = f"CREATE TRANSIENT TABLE IF NOT EXISTS {full_name} (\n" + ",\n".join(attrs_sql) + pk_clause + "\n);"
+                    ddl_statements.append(ddl)
+                
+                progress.progress(1.0)
+                update_monitor(4)
+                st.success("✅ AI Modeling Complete!")
+                st.session_state.final_sql = "\n\n".join(ddl_statements)
+                st.session_state.csv_rows = csv_rows
+
             except Exception as e:
-                st.warning(f"Snowflake Embed failed ({e}), falling back to TF-IDF")
-                embeds = fallback_embeddings(texts)
-                
-            clusters = cluster(embeds, labels, k=max(2, int(len(texts)**0.5)))
-            cluster_payload = {'embed_model': 'ui-run', 'cluster_count': len(clusters), 'clusters': clusters}
-            
-            # 3. SILVER MODEL
-            update_monitor(2)
-            progress.progress(0.75)
-            model_json_str = generate_silver_model_cached(cluster_payload)
-            model_data = parse_robust(model_json_str)
-            if isinstance(model_data, str):
-                model_data = parse_robust(model_data)
-            st.session_state.model_data = model_data
+                st.error(f"Pipeline Failed: {e}")
+                st.exception(e)
 
-            if not isinstance(model_data, dict) or "entities" not in model_data:
-                st.error("Failed to generate valid model JSON from LLM.")
-                st.stop()
-                
-            # 4. DDL GENERATION
-            update_monitor(3)
-            progress.progress(0.9)
-            
-            ddl_statements = []
-            csv_rows = []
-            target_schema = "SILVER"
-            
-            for entity in model_data.get("entities", []):
-                t_name = sanitize(entity.get("entity_name"))
-                attrs_sql = []
-                pk_cols = []
-                
-                for attr in entity.get("attributes", []):
-                    col = sanitize(attr.get("name"))
-                    dtype = attr.get("datatype")
-                    desc = attr.get("description", "")
-                    desc_safe = desc.replace("'", "''")
-                    attrs_sql.append(f"    {col} {dtype} COMMENT '{desc_safe}'")
-                    
-                    if attr.get("is_pk") or col in DEFAULT_PK_CANDIDATES:
-                        pk_cols.append(col)
-                    
-                    src_cols = attr.get("source_columns", [])
-                    if not src_cols: src_cols = ["UNKNOWN.UNKNOWN.UNKNOWN"]
-                        
-                    for src in src_cols:
-                        parts = src.split('.')
-                        if len(parts) == 3: s_schema, s_table, s_col = parts
-                        elif len(parts) == 2: s_schema, s_table, s_col = schema, parts[0], parts[1]
-                        else: s_schema, s_table, s_col = schema, "UNKNOWN", parts[0]
-                        
-                        s_desc = ""
-                        if s_table in desc_data and s_col in desc_data[s_table]:
-                            s_desc = desc_data[s_table][s_col]
-                        
-                        s_type = ""
-                        if s_table in all_profiles and s_col in all_profiles[s_table]:
-                            s_type = all_profiles[s_table][s_col].get("datatype", "")
 
-                        csv_rows.append({
-                            "SourceSchema": s_schema, "SourceTableName": s_table, "SourceColumn": s_col,
-                            "SourceDescription": s_desc, "SourceDataType": s_type,
-                            "TargetSchema": target_schema, "TargetTableName": t_name, "TargetColumn": col,
-                            "TargetDataType": dtype, "TargetDescription": desc,
-                            "TransformationRule": "Direct Map" if s_col == col else "Renamed/Transformed",
-                            "MappingRationale": attr.get("rationale", "Standard business mapping")
-                        })
-                
-                pk_clause = f",\n    PRIMARY KEY ({', '.join(pk_cols)})" if pk_cols else ""
-                full_name = f"{database}.{target_schema}.{t_name}"
-                ddl = f"CREATE TRANSIENT TABLE IF NOT EXISTS {full_name} (\n" + ",\n".join(attrs_sql) + pk_clause + "\n);"
-                ddl_statements.append(ddl)
-            
-            progress.progress(1.0)
-            update_monitor(4)
-            st.success("✅ AI Modeling Complete!")
-            st.session_state.final_sql = "\n\n".join(ddl_statements)
-            st.session_state.csv_rows = csv_rows
-
-        except Exception as e:
-            st.error(f"Pipeline Failed: {e}")
-            st.exception(e)
 
 # --- RESULTS ---
 if "final_sql" in st.session_state:

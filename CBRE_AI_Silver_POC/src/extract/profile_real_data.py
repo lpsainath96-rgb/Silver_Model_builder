@@ -37,9 +37,25 @@ def get_connection():
     )
 
 
-def list_tables(conn, limit: int = 10) -> List[str]:
-    """List tables in the current schema."""
-    schema = (os.getenv("SNOWFLAKE_SCHEMA") or "PUBLIC").upper()
+def list_schemas(conn) -> List[str]:
+    """List all schemas in the current database."""
+    sql = """
+        SELECT schema_name 
+        FROM information_schema.schemata 
+        WHERE catalog_name = CURRENT_DATABASE()
+        ORDER BY schema_name
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        return [row[0] for row in cur.fetchall()]
+
+
+def list_tables(conn, schema: str = None, limit: int = 100) -> List[str]:
+    """List tables in a schema. Defaults to current schema from env."""
+    if schema is None:
+        schema = (os.getenv("SNOWFLAKE_SCHEMA") or "PUBLIC").upper()
+    else:
+        schema = schema.upper()
     sql = """
         SELECT table_name 
         FROM information_schema.tables 
@@ -50,6 +66,7 @@ def list_tables(conn, limit: int = 10) -> List[str]:
         cur.execute(sql, (schema,))
         tables = [row[0] for i, row in enumerate(cur.fetchall()) if i < limit]
     return tables
+
 
 
 def get_column_info(conn, table_name: str) -> List[Dict[str, str]]:
