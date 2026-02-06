@@ -1,4 +1,4 @@
-# CBRE AI Silver Model Builder
+# CBRE AI Data Modeler  Agent
 
 An AI-powered data modeling pipeline that automatically transforms Bronze (raw) layer data models into harmonized Silver layer models for CBRE's Non-GWS Revenue analytics. The pipeline uses **Snowflake Cortex AI** functions for semantic analysis, clustering, and model generation to automate the typically manual process of creating standardized Silver layer schemas.
 

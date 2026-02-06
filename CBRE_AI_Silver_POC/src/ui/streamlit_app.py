@@ -35,8 +35,8 @@ class SnowflakeEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super().default(obj)
 
-st.set_page_config(page_title="Silver Model Builder", layout="wide")
-st.title("Silver Model Builder")
+st.set_page_config(page_title="Data Modeling with AI", layout="wide", page_icon="🤖")
+st.title("🤖 Data Modeler  Agent")
 
 # --- CACHED UTILS ---
 # We wrap the imported functions to cache their results.
@@ -166,12 +166,12 @@ if "sidebar_schema" not in st.session_state:
     st.session_state.sidebar_schema = os.getenv("SNOWFLAKE_SCHEMA", "BRONZE")
 
 # Use session state as the source of truth (NOT os.environ)
-account = st.sidebar.text_input("Account", value=st.session_state.sidebar_account, key="account_input")
-user = st.sidebar.text_input("User", value=st.session_state.sidebar_user, key="user_input")
-role = st.sidebar.text_input("Role", value=st.session_state.sidebar_role, key="role_input")
-warehouse = st.sidebar.text_input("Warehouse", value=st.session_state.sidebar_warehouse, key="warehouse_input")
-database = st.sidebar.text_input("Database", value=st.session_state.sidebar_database, key="database_input")
-schema = st.sidebar.text_input("Bronze Schema (Source)", value=st.session_state.sidebar_schema, key="schema_input", help="Schema containing Bronze/source tables")
+account = st.sidebar.text_input("❄️ Account", value=st.session_state.sidebar_account, key="account_input")
+user = st.sidebar.text_input("👤 User", value=st.session_state.sidebar_user, key="user_input")
+role = st.sidebar.text_input("🔑 Role", value=st.session_state.sidebar_role, key="role_input")
+warehouse = st.sidebar.text_input("⚙️ Warehouse", value=st.session_state.sidebar_warehouse, key="warehouse_input")
+database = st.sidebar.text_input("🗄️ Database", value=st.session_state.sidebar_database, key="database_input")
+schema = st.sidebar.text_input("📂 Source Schema", value=st.session_state.sidebar_schema, key="schema_input", help="Schema containing Source tables")
 
 # Update session state when user changes values
 st.session_state.sidebar_account = account
@@ -195,7 +195,7 @@ if schema != "":
     st.session_state.bronze_schema_snapshot = schema
 
 
-if st.sidebar.button("Test Connection"):
+if st.sidebar.button("⚡ Test Connection", use_container_width=True):
     try:
         # Temporarily set env vars for the get_connection utility
         os.environ["SNOWFLAKE_ACCOUNT"] = account
@@ -235,14 +235,14 @@ if "desc_data" not in st.session_state:
 st.subheader("🎯 Mode Selection")
 mode = st.radio(
     "Choose pipeline mode:",
-    ["🔨 Generate New Silver Model", "🔗 Map to Existing Silver Schema"],
+    ["🔨 Generate New Model", "🔗 Map to Existing Target Schema"],
     horizontal=True,
     key="pipeline_mode"
 )
 
-is_mapping_mode = mode == "🔗 Map to Existing Silver Schema"
+is_mapping_mode = mode == "🔗 Map to Existing Target Schema"
 
-st.subheader("1️⃣ Select Bronze Tables (Source)")
+st.subheader("📥 1. Select Source Tables")
 
 # Use the protected snapshot values
 bronze_db = st.session_state.bronze_db_snapshot
@@ -285,7 +285,7 @@ if len(st.session_state.bronze_selected) > 0:
     st.caption(f"🔍 Debug: Session has {len(st.session_state.bronze_selected)} bronze tables, {len(valid_bronze)} are valid")
 
 selected_tables = st.multiselect(
-    "Choose Bronze tables:", 
+    "Choose Source tables:", 
     tables,
     default=valid_bronze,
     key="bronze_multiselect"
@@ -300,8 +300,8 @@ selected_silver_schema = None
 selected_silver_tables = []
 
 if is_mapping_mode:
-    st.subheader("1️⃣.b Select Silver Target (Database/Schema/Tables)")
-    st.info("💡 **Tip:** Silver tables can be in a different database than Bronze. Specify the target database and schema below.")
+    st.subheader("📤 1.b Select Target (Database/Schema/Tables)")
+    st.info("💡 **Tip:** Target tables can be in a different database than Source. Specify the target database and schema below.")
     
     col_db, col_schema = st.columns(2)
     
@@ -397,7 +397,7 @@ selected_columns_map = {} # {table: [col1, col2]}
 
 
 if selected_tables:
-    st.subheader("2️⃣ Select Target Columns")
+    st.subheader("2️⃣ Select Required Columns")
     
     # get_column_info is now cached, so multiple iterations are fast
     for table in selected_tables:
@@ -441,9 +441,9 @@ st.write("---")
 
 # --- PHASE 1: PROFILING ---
 if is_mapping_mode:
-    st.subheader("3️⃣ Profile Bronze Source Data")
+    st.subheader("📊 3. Profile Source Data")
 else:
-    st.subheader("3️⃣ Profiling")
+    st.subheader("📊 3. Profiling")
 
 col1, col2 = st.columns([2, 1])
 with col2:
@@ -598,7 +598,7 @@ st.write("---")
 
 if is_mapping_mode:
     # --- MAPPING MODE PIPELINE ---
-    st.subheader("4️⃣ AI Bronze-to-Silver Mapping")
+    st.subheader("4️⃣ AI Source-to-Target Mapping")
     
     if not st.session_state.profiles:
         st.info("Please run Bronze profiling above first.")
@@ -608,17 +608,17 @@ if is_mapping_mode:
         # Business Context Input
         st.markdown("**📝 Business Context (Optional)**")
         business_context = st.text_area(
-            "Describe how the Bronze tables relate to Silver, naming conventions, or any mapping hints:",
-            placeholder="Example: The Bronze tables are different CRM systems. The Silver table is a unified customer view. CUST_ID maps to CUSTOMER_KEY, EMAIL maps to EMAIL_ADDRESS...",
+            "Describe how the Source tables relate to Target, naming conventions, or any mapping hints:",
+            placeholder="Example: The Source tables are different CRM systems. The Target table is a unified customer view. CUST_ID maps to CUSTOMER_KEY, EMAIL maps to EMAIL_ADDRESS...",
             height=100,
             key="business_context"
         )
         
-        if st.button("🔗 Run AI Mapping", use_container_width=True):
+        if st.button("🧠 Run AI Mapping", use_container_width=True):
             with st.status("🔍 Running Iterative AI Mapping...", expanded=True) as status:
                 try:
                     # 1. Profile Silver tables - use silver database
-                    st.write("📊 Profiling Silver target tables...")
+                    st.write("📊 Profiling target tables...")
                     silver_profiles = {}
                     silver_db = st.session_state.get('silver_database', database)
                     conn = get_connection()
@@ -643,13 +643,13 @@ if is_mapping_mode:
                         st.session_state.profiles, 
                         schema
                     )
-                    st.write(f"  ✓ Bronze descriptions: {sum(len(v) for v in bronze_descriptions.values())} columns")
+                    st.write(f"  ✓ Source descriptions: {sum(len(v) for v in bronze_descriptions.values())} columns")
                     
                     silver_descriptions = generate_column_descriptions(
                         silver_profiles, 
                         selected_silver_schema
                     )
-                    st.write(f"  ✓ Silver descriptions: {sum(len(v) for v in silver_descriptions.values())} columns")
+                    st.write(f"  ✓ Target descriptions: {sum(len(v) for v in silver_descriptions.values())} columns")
                     
                     # 4. Compute embedding similarity for candidate filtering
                     st.write("🔗 Computing embedding similarity matrix...")
@@ -672,7 +672,7 @@ if is_mapping_mode:
                     mappings = run_iterative_mapping(
                         source_profiles=st.session_state.profiles,
                         target_profiles=silver_profiles,
-                        source_schema_name=schema,  # Bronze schema from sidebar
+                        source_schema_name=schema,  # Source schema from sidebar
                         target_schema_name=selected_silver_schema,
                         business_context=business_context,
                         progress_callback=update_progress,
@@ -920,20 +920,20 @@ if is_mapping_mode:
 
 else:
     # --- ORIGINAL GENERATION MODE PIPELINE ---
-    st.subheader("4️⃣ AI Silver Model Generation")
+    st.subheader("🪄 4. AI Model Generation")
     
     if not st.session_state.profiles:
         st.info("Please run profiling above to unlock AI modeling.")
     else:
-        if st.button("🚀 Start AI Silver Modeling", use_container_width=True):
+        if st.button("🪄 Start AI Model", use_container_width=True):
             monitor_placeholder = st.empty()
             progress = st.progress(0)
             
             pipeline_steps = [
                 "1. AI Description Generation",
                 "2. Semantic Clustering",
-                "3. Silver Model Logic Design",
-                "4. Snowflake DDL Emission"
+                "3. Model Logic Design",
+                "4. Snowflake DDL Generation"
             ]
 
 

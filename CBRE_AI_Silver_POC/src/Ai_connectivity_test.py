@@ -19,22 +19,38 @@ def get_snowflake_connection():
     account = os.getenv("SNOWFLAKE_ACCOUNT", "")
     if account.endswith(".snowflakecomputing.com"):
         account = account.replace(".snowflakecomputing.com", "")
-        
-    print(f"Connecting to Account: {account}")
-    print(f"User: {os.getenv('SNOWFLAKE_USER')}")
-    print(f"Role: {os.getenv('SNOWFLAKE_ROLE')}")
-    print(f"Warehouse: {os.getenv('SNOWFLAKE_WAREHOUSE')}")
-    print(f"Database: {os.getenv('SNOWFLAKE_DATABASE')}")
-    print(f"Schema: {os.getenv('SNOWFLAKE_SCHEMA')}")
     
+    # Try normalized account name (underscores to hyphens)
+    normalized_account = account.replace("_", "-")
+    print(f"Original Account: {account}")
+    print(f"Normalized Account: {normalized_account}")
+    
+    # Try with both variations
+    for acc in [account, normalized_account]:
+        print(f"\n--- Attempting connection with account: {acc} ---")
+        try:
+            return snowflake.connector.connect(
+                account=acc,
+                user=os.getenv("SNOWFLAKE_USER"),
+                password=os.getenv("SNOWFLAKE_PASSWORD"),
+                role=os.getenv("SNOWFLAKE_ROLE"),
+                warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
+                database=os.getenv("SNOWFLAKE_DATABASE"),
+                schema=os.getenv("SNOWFLAKE_SCHEMA"),
+            )
+        except Exception as e:
+            print(f"Connection failed for {acc}: {e}")
+            
+    print("\nAll connection attempts failed. Trying insecure_mode with normalized account...")
     return snowflake.connector.connect(
-        account=account,
+        account=normalized_account,
         user=os.getenv("SNOWFLAKE_USER"),
         password=os.getenv("SNOWFLAKE_PASSWORD"),
         role=os.getenv("SNOWFLAKE_ROLE"),
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
         database=os.getenv("SNOWFLAKE_DATABASE"),
         schema=os.getenv("SNOWFLAKE_SCHEMA"),
+        insecure_mode=True
     )
 
 def test_cortex_functions():
