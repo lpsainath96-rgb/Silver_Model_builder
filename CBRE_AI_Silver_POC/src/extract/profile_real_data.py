@@ -22,19 +22,27 @@ def to_json_safe(val):
 
 
 def get_connection():
-    """Create a Snowflake connection using environment variables."""
-    raw_account = os.getenv("SNOWFLAKE_ACCOUNT") or ""
-    if raw_account.endswith(".snowflakecomputing.com"):
-        raw_account = raw_account.replace(".snowflakecomputing.com", "")
-    return snowflake.connector.connect(
-        account=raw_account,
-        user=os.getenv("SNOWFLAKE_USER"),
-        password=os.getenv("SNOWFLAKE_PASSWORD"),
-        role=os.getenv("SNOWFLAKE_ROLE"),
-        warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
-        database=os.getenv("SNOWFLAKE_DATABASE"),
-        schema=os.getenv("SNOWFLAKE_SCHEMA"),
-    )
+    """Create a Snowflake connection using native session (SiS) or environment variables."""
+    # 1. Try to get native Snowflake session (Streamlit in Snowflake)
+    try:
+        from snowflake.snowpark.context import get_active_session
+        session = get_active_session()
+        # SiS provides a Snowpark session. We use the raw connection for cursor-based work.
+        return session.connection
+    except (ImportError, Exception):
+        # 2. Fallback to local snowflake-connector-python
+        raw_account = os.getenv("SNOWFLAKE_ACCOUNT") or ""
+        if raw_account.endswith(".snowflakecomputing.com"):
+            raw_account = raw_account.replace(".snowflakecomputing.com", "")
+        return snowflake.connector.connect(
+            account=raw_account,
+            user=os.getenv("SNOWFLAKE_USER"),
+            password=os.getenv("SNOWFLAKE_PASSWORD"),
+            role=os.getenv("SNOWFLAKE_ROLE"),
+            warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
+            database=os.getenv("SNOWFLAKE_DATABASE"),
+            schema=os.getenv("SNOWFLAKE_SCHEMA"),
+        )
 
 
 def list_schemas(conn) -> List[str]:

@@ -7,3 +7,7 @@ python-dotenv
 matplotlib 
 networkx
 snowflake-connector-python
+streamlit
+plotly
+numpy
+nbformat

@@ -6,10 +6,15 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Add src to pythonpath so we can import our modules
-base_dir = Path(__file__).resolve().parents[2]
-src_dir = base_dir / "src"
-if str(src_dir) not in sys.path:
-    sys.path.append(str(src_dir))
+try:
+    # Try to find base_dir relative to this file
+    base_dir = Path(__file__).resolve().parents[2]
+    src_dir = base_dir / "src"
+    if str(src_dir) not in sys.path:
+        sys.path.append(str(src_dir))
+except Exception:
+    # Fallback for environments where __file__ might be restricted (SiS)
+    pass
 
 from extract.profile_real_data import list_tables, list_schemas, get_connection, get_column_info
 from ai.bronze_silver_mapper import map_bronze_to_silver
@@ -26,14 +31,16 @@ from decimal import Decimal
 import json
 from datetime import datetime, date
 
-class SnowflakeEncoder(json.JSONEncoder):
-    """Custom JSON encoder to handle Snowflake/Decimal/Datetime types."""
-    def default(self, obj):
-        if isinstance(obj, Decimal):
-            return float(obj) if obj % 1 else int(obj)
-        if isinstance(obj, (datetime, date)):
-            return obj.isoformat()
-        return super().default(obj)
+# Handle Snowflake Session (Native SiS support)
+def get_current_session():
+    try:
+        from snowflake.snowpark.context import get_active_session
+        return get_active_session()
+    except Exception:
+        return None
+
+native_session = get_current_session()
+is_sis = native_session is not None
 
 st.set_page_config(page_title="Data Modeling with AI", layout="wide", page_icon="🤖")
 st.title("🤖 Data Modeler  Agent")
@@ -151,19 +158,36 @@ def list_tables_in_schema_cached(account, user, role, warehouse, database, schem
 # --- SIDEBAR: CONNECTION ---
 st.sidebar.header("🔌 Snowflake Connection")
 
-# Initialize sidebar values from environment ONLY ONCE on first load
+if is_sis:
+    st.sidebar.success("🔗 Connected natively to Snowflake")
+    # Get defaults from native session
+    def_account = native_session.connection.account if hasattr(native_session.connection, 'account') else ""
+    def_user = native_session.get_current_user() if hasattr(native_session, 'get_current_user') else ""
+    def_role = native_session.get_current_role() if hasattr(native_session, 'get_current_role') else ""
+    def_warehouse = native_session.get_current_warehouse() if hasattr(native_session, 'get_current_warehouse') else ""
+    def_database = native_session.get_current_database() if hasattr(native_session, 'get_current_database') else ""
+    def_schema = native_session.get_current_schema() if hasattr(native_session, 'get_current_schema') else "BRONZE"
+else:
+    def_account = os.getenv("SNOWFLAKE_ACCOUNT", "")
+    def_user = os.getenv("SNOWFLAKE_USER", "")
+    def_role = os.getenv("SNOWFLAKE_ROLE", "")
+    def_warehouse = os.getenv("SNOWFLAKE_WAREHOUSE", "")
+    def_database = os.getenv("SNOWFLAKE_DATABASE", "")
+    def_schema = os.getenv("SNOWFLAKE_SCHEMA", "BRONZE")
+
+# Initialize sidebar values from default context ONLY ONCE on first load
 if "sidebar_account" not in st.session_state:
-    st.session_state.sidebar_account = os.getenv("SNOWFLAKE_ACCOUNT", "")
+    st.session_state.sidebar_account = def_account
 if "sidebar_user" not in st.session_state:
-    st.session_state.sidebar_user = os.getenv("SNOWFLAKE_USER", "")
+    st.session_state.sidebar_user = def_user
 if "sidebar_role" not in st.session_state:
-    st.session_state.sidebar_role = os.getenv("SNOWFLAKE_ROLE", "")
+    st.session_state.sidebar_role = def_role
 if "sidebar_warehouse" not in st.session_state:
-    st.session_state.sidebar_warehouse = os.getenv("SNOWFLAKE_WAREHOUSE", "")
+    st.session_state.sidebar_warehouse = def_warehouse
 if "sidebar_database" not in st.session_state:
-    st.session_state.sidebar_database = os.getenv("SNOWFLAKE_DATABASE", "")
+    st.session_state.sidebar_database = def_database
 if "sidebar_schema" not in st.session_state:
-    st.session_state.sidebar_schema = os.getenv("SNOWFLAKE_SCHEMA", "BRONZE")
+    st.session_state.sidebar_schema = def_schema
 
 # Use session state as the source of truth (NOT os.environ)
 account = st.sidebar.text_input("❄️ Account", value=st.session_state.sidebar_account, key="account_input")
