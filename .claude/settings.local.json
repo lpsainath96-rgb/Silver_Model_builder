@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir /s /b \"C:\\\\Users\\\\SReddy31\\\\Downloads\\\\Model Accelerator\\\\Silver_Model_builder\")",
+      "Bash(python -m py_compile:*)"
+    ]
+  }
+}

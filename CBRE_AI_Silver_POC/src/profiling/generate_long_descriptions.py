@@ -92,7 +92,35 @@ def build_template_description(table: str, col: str, meta_datatype: str, prof: d
 
 
 def build_llm_prompt(table: str, col: str, meta_datatype: str, prof: dict) -> str:
-    """Build the prompt for AI_COMPLETE."""
+    """Build the prompt for AI_COMPLETE with enriched profiling context."""
+    # Build extended context sections
+    extra_context = ""
+
+    # String stats
+    string_stats = prof.get("string_stats")
+    if string_stats:
+        extra_context += f"""
+String Analysis:
+  Length range: {string_stats.get('min_length')}-{string_stats.get('max_length')} chars (avg {string_stats.get('avg_length')})
+  Case: {string_stats.get('upper_case_pct')}% UPPER, {string_stats.get('lower_case_pct')}% lower
+  Empty strings: {string_stats.get('empty_string_count')}"""
+
+    # Detected patterns
+    patterns = prof.get("detected_patterns", [])
+    if patterns:
+        pat_str = ", ".join([f"{p['pattern']} ({p['match_pct']}%)" for p in patterns])
+        extra_context += f"\nDetected Patterns: {pat_str}"
+
+    # Expanded sample values (up to 10 in prompt)
+    samples = prof.get("sample_values", [])
+    if samples:
+        extra_context += f"\nSample Values ({len(samples)}): {', '.join(samples[:10])}"
+
+    # Type category
+    type_cat = prof.get("type_category", "")
+    if type_cat:
+        extra_context += f"\nType Category: {type_cat}"
+
     return f"""You are a data modeling assistant. Craft a precise, business-friendly long description for the column below.
 Focus: Non-GWS Revenue analytics context; clarify metric vs dimension; mention granularity; avoid repetition.
 Include: role, semantics, data type nuances, typical cardinality, and potential transformations for Silver layer.
@@ -100,8 +128,11 @@ Include: role, semantics, data type nuances, typical cardinality, and potential 
 Table: {table}
 Column: {col}
 Data Type: {meta_datatype}
-Profile: {json.dumps(prof)}
+Total Rows: {prof.get('total', 0)} | Nulls: {prof.get('nulls', 0)} | Distinct: {prof.get('distinct', 0)}
+Range: {json.dumps(prof.get('range', {}))}
+Top Values: {json.dumps(prof.get('top_values', [])[:5])}
 Semantic Hint: {infer_semantic(col)}
+{extra_context}
 
 Output: Single paragraph (<500 chars)."""
 
